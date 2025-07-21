@@ -30,6 +30,8 @@ services:
     container_name: optischema-api
     environment:
       - DATABASE_URL=${DATABASE_URL}
+      - REPLICA_DATABASE_URL=postgresql://sandbox:sandbox_pass@postgres_sandbox:5432/sandbox
+      - REPLICA_ENABLED=true
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
@@ -51,6 +53,7 @@ services:
     volumes:
       - ./backend:/app
       - ./scripts:/scripts
+      - ./.env:/app/.env
       - api_cache:/app/cache
     depends_on:
       postgres:

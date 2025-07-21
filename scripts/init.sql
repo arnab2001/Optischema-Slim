@@ -70,6 +70,52 @@ CREATE TABLE IF NOT EXISTS optischema.sandbox_tests (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS optischema.audit_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    action_type TEXT NOT NULL,
+    user_id TEXT,
+    recommendation_id UUID REFERENCES optischema.recommendations(id),
+    query_hash TEXT,
+    before_metrics JSONB,
+    after_metrics JSONB,
+    improvement_percent DOUBLE PRECISION,
+    details JSONB DEFAULT '{}',
+    risk_level TEXT,
+    status TEXT DEFAULT 'completed',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS optischema.connection_baselines (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    connection_id TEXT UNIQUE NOT NULL,
+    connection_name TEXT NOT NULL,
+    baseline_latency_ms DOUBLE PRECISION NOT NULL,
+    measured_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    connection_config JSONB NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS optischema.index_recommendations (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    index_name TEXT NOT NULL,
+    table_name TEXT NOT NULL,
+    schema_name TEXT NOT NULL,
+    size_bytes BIGINT NOT NULL,
+    size_pretty TEXT NOT NULL,
+    idx_scan BIGINT NOT NULL,
+    idx_tup_read BIGINT NOT NULL,
+    idx_tup_fetch BIGINT NOT NULL,
+    last_used TIMESTAMP WITH TIME ZONE,
+    days_unused INTEGER NOT NULL,
+    estimated_savings_mb DOUBLE PRECISION NOT NULL,
+    risk_level TEXT NOT NULL,
+    recommendation_type TEXT NOT NULL,
+    sql_fix TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_query_metrics_hash ON optischema.query_metrics(query_hash);
 CREATE INDEX IF NOT EXISTS idx_query_metrics_created_at ON optischema.query_metrics(created_at);
@@ -77,6 +123,15 @@ CREATE INDEX IF NOT EXISTS idx_analysis_results_hash ON optischema.analysis_resu
 CREATE INDEX IF NOT EXISTS idx_recommendations_hash ON optischema.recommendations(query_hash);
 CREATE INDEX IF NOT EXISTS idx_recommendations_type ON optischema.recommendations(recommendation_type);
 CREATE INDEX IF NOT EXISTS idx_recommendations_applied ON optischema.recommendations(applied);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_action_type ON optischema.audit_logs(action_type);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON optischema.audit_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON optischema.audit_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_recommendation_id ON optischema.audit_logs(recommendation_id);
+CREATE INDEX IF NOT EXISTS idx_connection_baselines_connection_id ON optischema.connection_baselines(connection_id);
+CREATE INDEX IF NOT EXISTS idx_connection_baselines_is_active ON optischema.connection_baselines(is_active);
+CREATE INDEX IF NOT EXISTS idx_index_recommendations_schema_table ON optischema.index_recommendations(schema_name, table_name);
+CREATE INDEX IF NOT EXISTS idx_index_recommendations_risk_level ON optischema.index_recommendations(risk_level);
+CREATE INDEX IF NOT EXISTS idx_index_recommendations_days_unused ON optischema.index_recommendations(days_unused);
 
 -- Create functions for updating timestamps
 CREATE OR REPLACE FUNCTION optischema.update_updated_at_column()

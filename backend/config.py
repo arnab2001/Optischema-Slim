@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     # Sandbox Configuration (optional)
     sandbox_database_url: Optional[str] = Field(default=None, env="SANDBOX_DATABASE_URL")
     
+    # Replica Configuration (optional)
+    replica_database_url: Optional[str] = Field(default=None, env="REPLICA_DATABASE_URL")
+    replica_enabled: bool = Field(default=False, env="REPLICA_ENABLED")
+    replica_fallback_enabled: bool = Field(default=True, env="REPLICA_FALLBACK_ENABLED")
+    
     gemini_api_key: str = Field(default="", env="GEMINI_API_KEY")
     deepseek_api_key: str = Field(default="", env="DEEPSEEK_API_KEY")
     llm_provider: str = Field(default="gemini", env="LLM_PROVIDER")
@@ -51,6 +56,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+        extra = "ignore"  # Ignore extra environment variables
 
 
 # Global settings instance
@@ -92,3 +98,36 @@ def get_database_config():
     
     # No fallback - require explicit configuration
     raise ValueError("No database configuration found. Please set DATABASE_URL or individual database environment variables.") 
+
+
+def get_replica_database_config():
+    """Parse replica database URL and return connection parameters."""
+    if not settings.replica_database_url:
+        return None
+        
+    url = settings.replica_database_url
+    if url.startswith("postgresql://"):
+        # Extract components from postgresql://user:pass@host:port/db
+        parts = url.replace("postgresql://", "").split("@")
+        if len(parts) == 2:
+            auth, rest = parts
+            user_pass = auth.split(":")
+            host_port_db = rest.split("/")
+            if len(host_port_db) == 2:
+                host_port, db = host_port_db
+                host_port_parts = host_port.split(":")
+                host = host_port_parts[0]
+                port = int(host_port_parts[1]) if len(host_port_parts) > 1 else 5432
+                user = user_pass[0]
+                password = user_pass[1] if len(user_pass) > 1 else ""
+                
+                return {
+                    "host": host,
+                    "port": port,
+                    "database": db,
+                    "user": user,
+                    "password": password,
+                    "ssl": False  # Default to False for sandbox databases
+                }
+    
+    return None 

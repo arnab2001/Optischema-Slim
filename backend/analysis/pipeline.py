@@ -80,8 +80,25 @@ async def run_analysis_pipeline() -> Dict[str, Any]:
         analysis_cache = detailed_analyses
         last_analysis_time = datetime.utcnow()
         
-        # Generate recommendations for all analyses
-        recommendations_cache = await generate_recommendations(detailed_analyses)
+        # Generate recommendations for all analyses and store them simply
+        new_recommendations = await generate_recommendations(detailed_analyses)
+        
+        # Store in simple store (deduplication is built-in)
+        try:
+            from simple_recommendations import SimpleRecommendationStore
+            stored_count = 0
+            for rec in new_recommendations:
+                rec_dict = rec.model_dump() if hasattr(rec, 'model_dump') else rec
+                rec_id = SimpleRecommendationStore.add_recommendation(rec_dict)
+                if rec_id:
+                    stored_count += 1
+            
+            logger.info(f"✅ Stored {stored_count} new recommendations in simple store")
+            # Update cache reference for compatibility
+            recommendations_cache = new_recommendations
+        except Exception as e:
+            logger.error(f"Failed to store recommendations: {e}")
+            recommendations_cache = new_recommendations
         
         # Prepare results
         results = {

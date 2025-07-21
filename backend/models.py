@@ -71,9 +71,13 @@ class Recommendation(BaseModel):
     title: str = Field(..., description="Short title for the recommendation")
     description: str = Field(..., description="Detailed description of the recommendation")
     sql_fix: Optional[str] = Field(None, description="SQL to apply the fix")
+    original_sql: Optional[str] = Field(None, description="Original query SQL")
+    patch_sql: Optional[str] = Field(None, description="Optimized query SQL")
+    execution_plan_json: Optional[Dict[str, Any]] = Field(None, description="Execution plan for table extraction")
     estimated_improvement_percent: Optional[int] = Field(None, ge=0, le=100, description="Estimated improvement percentage")
     confidence_score: Optional[int] = Field(None, ge=0, le=100, description="Confidence in the recommendation (0-100)")
     risk_level: Optional[str] = Field(None, description="Risk level (low, medium, high)")
+    status: str = Field(default="pending", description="Status of the recommendation (pending, active, applied, dismissed)")
     applied: bool = Field(default=False, description="Whether the recommendation has been applied")
     applied_at: Optional[datetime] = Field(None, description="When the recommendation was applied")
     created_at: Optional[datetime] = Field(None, description="Recommendation creation timestamp")
@@ -92,6 +96,22 @@ class SandboxTest(BaseModel):
     test_status: str = Field(..., description="Status of the test (pending, running, completed, failed)")
     test_results: Optional[Dict[str, Any]] = Field(None, description="Detailed test results")
     created_at: Optional[datetime] = Field(None, description="Test creation timestamp")
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class BenchmarkJob(BaseModel):
+    """Model for benchmark job tracking."""
+    
+    id: str = Field(..., description="Unique job identifier")
+    recommendation_id: str = Field(..., description="ID of the recommendation being benchmarked")
+    status: str = Field(default="pending", description="Job status (pending, running, completed, failed, error)")
+    job_type: str = Field(..., description="Type of job (benchmark, apply, rollback)")
+    created_at: datetime = Field(..., description="Job creation timestamp")
+    started_at: Optional[datetime] = Field(None, description="Job start timestamp")
+    completed_at: Optional[datetime] = Field(None, description="Job completion timestamp")
+    result_json: Optional[Dict[str, Any]] = Field(None, description="Job results")
+    error_message: Optional[str] = Field(None, description="Error message if job failed")
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -168,3 +188,65 @@ class AnalysisResponse(APIResponse):
     """Response model for analysis endpoints."""
     
     data: Optional[AnalysisResult] = Field(None, description="Analysis result data") 
+
+
+class AuditLog(BaseModel):
+    """Model for audit logging of all system actions."""
+    
+    id: Optional[UUID] = Field(None, description="Unique identifier")
+    action_type: str = Field(..., description="Type of action (recommendation_applied, benchmark_run, index_dropped, etc.)")
+    user_id: Optional[str] = Field(None, description="User who performed the action")
+    recommendation_id: Optional[UUID] = Field(None, description="Related recommendation ID if applicable")
+    query_hash: Optional[str] = Field(None, description="Related query hash if applicable")
+    
+    # Performance metrics
+    before_metrics: Optional[Dict[str, Any]] = Field(None, description="Performance metrics before action")
+    after_metrics: Optional[Dict[str, Any]] = Field(None, description="Performance metrics after action")
+    improvement_percent: Optional[float] = Field(None, description="Percentage improvement achieved")
+    
+    # Action details
+    details: Dict[str, Any] = Field(default_factory=dict, description="Additional action details")
+    risk_level: Optional[str] = Field(None, description="Risk level of the action")
+    status: str = Field(default="completed", description="Action status (completed, failed, rolled_back)")
+    
+    # Timestamps
+    created_at: Optional[datetime] = Field(None, description="Action timestamp")
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ConnectionBaseline(BaseModel):
+    """Model for storing connection latency baselines."""
+    
+    id: Optional[UUID] = Field(None, description="Unique identifier")
+    connection_id: str = Field(..., description="Unique connection identifier")
+    connection_name: str = Field(..., description="Human-readable connection name")
+    baseline_latency_ms: float = Field(..., description="Baseline network latency in milliseconds")
+    measured_at: datetime = Field(..., description="When baseline was measured")
+    connection_config: Dict[str, Any] = Field(..., description="Connection configuration (host, port, etc.)")
+    is_active: bool = Field(default=True, description="Whether this baseline is currently active")
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class IndexRecommendation(BaseModel):
+    """Model for unused/redundant index recommendations."""
+    
+    id: Optional[UUID] = Field(None, description="Unique identifier")
+    index_name: str = Field(..., description="Name of the index")
+    table_name: str = Field(..., description="Name of the table")
+    schema_name: str = Field(..., description="Name of the schema")
+    size_bytes: int = Field(..., description="Index size in bytes")
+    size_pretty: str = Field(..., description="Human-readable index size")
+    idx_scan: int = Field(..., description="Number of index scans")
+    idx_tup_read: int = Field(..., description="Number of tuples read from index")
+    idx_tup_fetch: int = Field(..., description="Number of tuples fetched from index")
+    last_used: Optional[datetime] = Field(None, description="When index was last used")
+    days_unused: int = Field(..., description="Number of days since last use")
+    estimated_savings_mb: float = Field(..., description="Estimated disk space savings in MB")
+    risk_level: str = Field(..., description="Risk level (low, medium, high)")
+    recommendation_type: str = Field(..., description="Type of recommendation (drop, analyze)")
+    sql_fix: Optional[str] = Field(None, description="SQL to drop the index")
+    created_at: Optional[datetime] = Field(None, description="Recommendation creation timestamp")
+    
+    model_config = ConfigDict(from_attributes=True) 

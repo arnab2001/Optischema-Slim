@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 
 export async function POST(request: Request) {
   try {
-    const { recommendation_id } = await request.json()
+    const { recommendation_id, benchmark_options } = await request.json()
     
     if (!recommendation_id) {
       return NextResponse.json({ 
@@ -15,8 +15,21 @@ export async function POST(request: Request) {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ recommendation_id })
+      body: JSON.stringify({ 
+        recommendation_id,
+        benchmark_options: benchmark_options || {}
+      })
     })
+    
+    // Check if response is JSON
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      console.error('Non-JSON response from backend:', await response.text());
+      return NextResponse.json({ 
+        error: 'Backend returned non-JSON response',
+        status: response.status
+      }, { status: 500 });
+    }
     
     const data = await response.json()
     return NextResponse.json(data)

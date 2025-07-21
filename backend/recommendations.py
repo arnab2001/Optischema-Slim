@@ -48,79 +48,95 @@ def estimate_improvement(analysis: AnalysisResult) -> int:
 async def generate_recommendations_for_analysis(analysis: AnalysisResult) -> List[Recommendation]:
     """
     Generate recommendations for a single analysis result.
-    Combines heuristics and AI suggestions.
+    Prioritizes quality over quantity - one excellent recommendation per query.
     """
     recs: List[Recommendation] = []
-    # Heuristic recommendations
-    if analysis.bottleneck_type in ("sequential_scan", "missing_index"):
-        recs.append(Recommendation(
+    
+    # AI-powered recommendation (primary - try this first)
+    try:
+        ai_rec = await generate_recommendation({
+            "query_text": analysis.query_text,
+            "bottleneck_type": analysis.bottleneck_type,
+            "performance_score": analysis.performance_score,
+            "summary": analysis.analysis_summary,
+            "actual_metrics": getattr(analysis, 'actual_metrics', None)
+        })
+        
+        # Create AI recommendation
+        ai_recommendation = Recommendation(
             id=str(uuid.uuid4()),
             query_hash=analysis.query_hash,
-            recommendation_type="index",
-            title="Add Index",
-            description="Consider adding an index to improve query performance.",
-            sql_fix=None,
-            estimated_improvement_percent=estimate_improvement(analysis),
-            confidence_score=score_recommendation(analysis),
-            risk_level="low",
+            recommendation_type="ai",
+            title=ai_rec.get("title", "AI Recommendation"),
+            description=ai_rec.get("description", ""),
+            sql_fix=ai_rec.get("sql_fix"),
+            estimated_improvement_percent=int(ai_rec.get("estimated_improvement", "0").rstrip('%')) if ai_rec.get("estimated_improvement") != "Unknown" else estimate_improvement(analysis),
+            confidence_score=ai_rec.get("confidence", 75),
+            risk_level=ai_rec.get("risk_level", "medium").lower(),
             applied=False,
             created_at=datetime.utcnow()
-        ))
-    if analysis.bottleneck_type == "large_sort":
-        recs.append(Recommendation(
-            id=str(uuid.uuid4()),
-            query_hash=analysis.query_hash,
-            recommendation_type="index",
-            title="Add Index for Sort",
-            description="Consider adding an index to optimize ORDER BY performance.",
-            sql_fix=None,
-            estimated_improvement_percent=estimate_improvement(analysis),
-            confidence_score=score_recommendation(analysis),
-            risk_level="low",
-            applied=False,
-            created_at=datetime.utcnow()
-        ))
-    # AI-powered recommendation
-    ai_rec = await generate_recommendation({
-        "query_text": analysis.query_text,
-        "bottleneck_type": analysis.bottleneck_type,
-        "performance_score": analysis.performance_score,
-        "summary": analysis.analysis_summary
-    })
-    recs.append(Recommendation(
-        id=str(uuid.uuid4()),
-        query_hash=analysis.query_hash,
-        recommendation_type="ai",
-        title=ai_rec.get("title", "AI Recommendation"),
-        description=ai_rec.get("description", ""),
-        sql_fix=ai_rec.get("sql_fix"),
-        estimated_improvement_percent=estimate_improvement(analysis),
-        confidence_score=score_recommendation(analysis),
-        risk_level="medium",
-        applied=False,
-        created_at=datetime.utcnow()
-    ))
-    # Query rewrite suggestion (AI)
-    if analysis.bottleneck_type in ("sequential_scan", "large_sort", "inefficient_select"):
-        try:
-            optimized_sql = await rewrite_query(analysis.query_text)
-            if optimized_sql and optimized_sql != analysis.query_text:
-                recs.append(Recommendation(
-                    id=str(uuid.uuid4()),
-                    query_hash=analysis.query_hash,
-                    recommendation_type="rewrite",
-                    title="Rewrite Query",
-                    description="AI-optimized query for better performance.",
-                    sql_fix=optimized_sql,
-                    estimated_improvement_percent=estimate_improvement(analysis),
-                    confidence_score=score_recommendation(analysis),
-                    risk_level="medium",
-                    applied=False,
-                    created_at=datetime.utcnow()
-                ))
-        except Exception as e:
-            logger.warning(f"Query rewrite failed: {e}")
-    return recs
+        )
+        recs.append(ai_recommendation)
+        
+        # If AI provided executable SQL, we're done - no need for heuristic duplicates
+        if ai_rec.get("sql_fix"):
+            logger.info(f"Generated executable AI recommendation for {analysis.query_hash[:8]}...")
+            return recs
+        else:
+            logger.info(f"Generated advisory AI recommendation for {analysis.query_hash[:8]}...")
+    
+    except Exception as e:
+        logger.warning(f"AI recommendation failed for {analysis.query_hash}: {e}")
+    
+    # Fallback to heuristic recommendations only if AI failed or provided no executable SQL
+    if not recs or not recs[0].sql_fix:
+        # Generate ONE best heuristic recommendation based on bottleneck type
+        if analysis.bottleneck_type in ("sequential_scan", "missing_index"):
+            recs.append(Recommendation(
+                id=str(uuid.uuid4()),
+                query_hash=analysis.query_hash,
+                recommendation_type="index",
+                title="Add Index to Improve Performance",
+                description=f"This query shows signs of {analysis.bottleneck_type}. Consider adding an index to improve query performance. Analyze the WHERE and JOIN clauses to identify the best columns for indexing.",
+                sql_fix=None,  # Heuristic recommendations are advisory-only
+                estimated_improvement_percent=estimate_improvement(analysis),
+                confidence_score=score_recommendation(analysis),
+                risk_level="low",
+                applied=False,
+                created_at=datetime.utcnow()
+            ))
+        elif analysis.bottleneck_type == "large_sort":
+            recs.append(Recommendation(
+                id=str(uuid.uuid4()),
+                query_hash=analysis.query_hash,
+                recommendation_type="index",
+                title="Add Index for ORDER BY Performance",
+                description="This query performs large sorts. Consider adding an index on the ORDER BY columns to eliminate the sort operation and improve performance.",
+                sql_fix=None,  # Heuristic recommendations are advisory-only
+                estimated_improvement_percent=estimate_improvement(analysis),
+                confidence_score=score_recommendation(analysis),
+                risk_level="low",
+                applied=False,
+                created_at=datetime.utcnow()
+            ))
+        else:
+            # For other bottleneck types, create a generic optimization recommendation
+            recs.append(Recommendation(
+                id=str(uuid.uuid4()),
+                query_hash=analysis.query_hash,
+                recommendation_type="optimization",
+                title="Query Optimization Opportunity",
+                description=f"This query shows performance issues related to {analysis.bottleneck_type}. Consider reviewing the query structure, indexes, and data access patterns.",
+                sql_fix=None,
+                estimated_improvement_percent=estimate_improvement(analysis),
+                confidence_score=score_recommendation(analysis),
+                risk_level="medium",
+                applied=False,
+                created_at=datetime.utcnow()
+            ))
+    
+    # Ensure we always return exactly one recommendation per query
+    return recs[:1]
 
 
 async def generate_recommendations(analyses: List[AnalysisResult]) -> List[Recommendation]:

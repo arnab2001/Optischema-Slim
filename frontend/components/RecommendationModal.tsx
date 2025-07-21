@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Loader2, Play, CheckCircle, AlertTriangle, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { BenchmarkModal } from './BenchmarkModal'
 
 interface RecommendationModalProps {
   suggestion: any
@@ -11,7 +12,7 @@ interface RecommendationModalProps {
 
 export default function RecommendationModal({ suggestion, onClose, onApply }: RecommendationModalProps) {
   const [isApplying, setIsApplying] = useState(false)
-  const [isBenchmarking, setIsBenchmarking] = useState(false)
+  const [showBenchmarkModal, setShowBenchmarkModal] = useState(false)
   const [benchmarkResults, setBenchmarkResults] = useState<any>(null)
   const [benchmarkError, setBenchmarkError] = useState<string | null>(null)
 
@@ -26,32 +27,32 @@ export default function RecommendationModal({ suggestion, onClose, onApply }: Re
     }
   }
 
-  const handleBenchmark = async () => {
-    setIsBenchmarking(true)
-    setBenchmarkError(null)
-    setBenchmarkResults(null)
-    
+  const handleBenchmark = async (options: any) => {
     try {
       const response = await fetch('/api/suggestions/benchmark', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ recommendation_id: suggestion.id })
+        body: JSON.stringify({ 
+          recommendation_id: suggestion.id,
+          benchmark_options: options
+        })
       })
       
       const data = await response.json()
       
-      if (data.success) {
+      if (data.success && data.benchmark.success) {
         setBenchmarkResults(data.benchmark)
+        setShowBenchmarkModal(false)
       } else {
-        setBenchmarkError(data.error || 'Benchmark failed')
+        setBenchmarkError(data.benchmark?.error || data.message || 'Benchmark failed')
+        setShowBenchmarkModal(true) // Keep modal open to show error
       }
     } catch (error) {
       setBenchmarkError('Failed to run benchmark')
+      setShowBenchmarkModal(true)
       console.error('Benchmark error:', error)
-    } finally {
-      setIsBenchmarking(false)
     }
   }
 
@@ -155,16 +156,11 @@ export default function RecommendationModal({ suggestion, onClose, onApply }: Re
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">Performance Test</h3>
               <button
-                onClick={handleBenchmark}
-                disabled={isBenchmarking}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50"
+                onClick={() => setShowBenchmarkModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
               >
-                {isBenchmarking ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Play className="w-4 h-4" />
-                )}
-                {isBenchmarking ? 'Testing...' : 'Run Benchmark'}
+                <Play className="w-4 h-4" />
+                Run Benchmark
               </button>
             </div>
 
@@ -175,21 +171,9 @@ export default function RecommendationModal({ suggestion, onClose, onApply }: Re
               </div>
             )}
 
-            {benchmarkResults?.error && (
-              <div className="flex items-center gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-                <AlertTriangle className="w-4 h-4 text-yellow-500" />
-                <div className="text-sm text-yellow-700">
-                  <div className="font-medium mb-1">Benchmark Not Available</div>
-                  <div>{benchmarkResults.error}</div>
-                  <div className="mt-2 text-xs">
-                    This recommendation provides guidance but cannot be automatically tested. 
-                    Consider implementing the suggested changes manually and monitoring the results.
-                  </div>
-                </div>
-              </div>
-            )}
 
-            {benchmarkResults && (
+
+            {benchmarkResults && benchmarkResults.success && (
               <div className="space-y-4">
                 {/* Improvement Summary */}
                 <div className="bg-green-50 border border-green-200 rounded-md p-4">
@@ -259,6 +243,15 @@ export default function RecommendationModal({ suggestion, onClose, onApply }: Re
           </button>
         </div>
       </div>
+
+      {/* Benchmark Modal */}
+      <BenchmarkModal
+        isOpen={showBenchmarkModal}
+        onClose={() => { setShowBenchmarkModal(false); setBenchmarkError(null); }}
+        onBenchmark={handleBenchmark}
+        recommendation={{ ...suggestion, benchmarkError }}
+        isLoading={false}
+      />
     </div>
   )
 } 

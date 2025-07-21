@@ -23,6 +23,11 @@ import QueryHeatMap from '@/components/QueryHeatMap'
 import LatencyTrendChart from '@/components/LatencyTrendChart'
 import ExportManager from '@/components/ExportManager'
 import { BarChart3, TrendingUp, Download, FileText, AlertTriangle } from 'lucide-react'
+import AuditTab from '@/components/AuditTab'
+import ConnectionBaselineTab from '@/components/ConnectionBaselineTab'
+import IndexAdvisorTab from '@/components/IndexAdvisorTab'
+import { RecommendationCard } from '@/components/RecommendationCard'
+import { ApplyStatusDashboard } from '@/components/ApplyStatusDashboard'
 
 // Helper function to filter business queries
 function isBusinessQuery(query: string) {
@@ -96,7 +101,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [selectedSuggestion, setSelectedSuggestion] = useState<any>(null)
   const [selectedQuery, setSelectedQuery] = useState<any>(null)
-  const [activeTab, setActiveTab] = useState<'overview' | 'queries' | 'suggestions' | 'analytics'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'queries' | 'suggestions' | 'analytics' | 'audit' | 'baselines' | 'indexes' | 'apply'>('overview')
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date())
   const [showConnectionWizard, setShowConnectionWizard] = useState(false)
   const [connectionConfig, setConnectionConfig] = useState<any>(null)
@@ -131,13 +136,13 @@ export default function Dashboard() {
       if (selectedQuery) setSelectedQuery(null)
     },
     onArrowLeft: () => {
-      const tabs = ['overview', 'queries', 'suggestions', 'analytics']
+      const tabs = ['overview', 'queries', 'suggestions', 'analytics', 'audit', 'baselines', 'indexes']
       const currentIndex = tabs.indexOf(activeTab)
       const newIndex = currentIndex > 0 ? currentIndex - 1 : tabs.length - 1
       setActiveTab(tabs[newIndex] as any)
     },
     onArrowRight: () => {
-      const tabs = ['overview', 'queries', 'suggestions', 'analytics']
+      const tabs = ['overview', 'queries', 'suggestions', 'analytics', 'audit', 'baselines', 'indexes']
       const currentIndex = tabs.indexOf(activeTab)
       const newIndex = currentIndex < tabs.length - 1 ? currentIndex + 1 : 0
       setActiveTab(tabs[newIndex] as any)
@@ -390,6 +395,18 @@ export default function Dashboard() {
     // Could add toast notification here
   }
 
+  const handleApply = (recommendationId: string) => {
+    console.log('Applied recommendation:', recommendationId)
+    // Refresh suggestions to update status
+    fetchSuggestions()
+  }
+
+  const handleRollback = (recommendationId: string) => {
+    console.log('Rolled back recommendation:', recommendationId)
+    // Refresh suggestions to update status
+    fetchSuggestions()
+  }
+
   const loadMoreMetrics = async () => {
     if (loadingMore || !hasMore) return
     
@@ -559,17 +576,21 @@ export default function Dashboard() {
       {/* Navigation Tabs */}
       <div className="border-b border-border bg-card">
         <div className="container mx-auto px-4">
-          <nav className="flex space-x-8">
+          <nav className="flex space-x-8 overflow-x-auto">
             {[
               { id: 'overview', label: 'Overview', icon: '📊' },
               { id: 'queries', label: 'Query Analysis', icon: '🔍' },
               { id: 'suggestions', label: 'Optimizations', icon: '⚡' },
-              { id: 'analytics', label: 'Analytics', icon: '📈' }
+              { id: 'analytics', label: 'Analytics', icon: '📈' },
+              { id: 'audit', label: 'Audit Log', icon: '📋' },
+              { id: 'baselines', label: 'Connection Baselines', icon: '🌐' },
+              { id: 'indexes', label: 'Index Advisor', icon: '🗂️' },
+              { id: 'apply', label: 'Apply Manager', icon: '🔧' }
             ].map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors whitespace-nowrap ${
                   activeTab === tab.id
                     ? 'border-primary text-primary'
                     : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -724,55 +745,15 @@ export default function Dashboard() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {Array.isArray(suggestions) ? suggestions.map((suggestion, index) => {
-                  // Map backend fields to frontend expectations
-                  const type = suggestion.recommendation_type || suggestion.type
-                  const confidence = suggestion.confidence_score || suggestion.confidence || 0
-                  const estimatedSavings = suggestion.estimated_improvement_percent || suggestion.estimated_savings || 0
-                  
-                  // Clean up title - remove markdown formatting and numbered prefixes
-                  let title = suggestion.title || 'Optimization Recommendation'
-                  if (title.startsWith('#') || title.startsWith('##')) {
-                    title = title.replace(/^#+\s*/, '').trim()
-                  }
-                  // Remove numbered prefixes like "1. **Title**" or "1. Title"
-                  title = title.replace(/^\d+\.\s*\*\*?([^*]+)\*\*?/, '$1').trim()
-                  title = title.replace(/^\d+\.\s*/, '').trim()
-                  
-                  return (
-                    <div
+                {Array.isArray(suggestions) ? suggestions.map((suggestion, index) => (
+                  <RecommendationCard
                       key={index}
-                      className="border border-border rounded-lg p-4 hover:bg-accent/50 transition-colors cursor-pointer"
-                      onClick={() => setSelectedSuggestion(suggestion)}
-                    >
-                      <div className="flex items-start justify-between mb-2">
-                        <h3 className="font-medium text-sm">{title}</h3>
-                        <span className={`px-2 py-1 rounded-full text-xs ${
-                          confidence > 80 ? 'bg-green-100 text-green-800' :
-                          confidence > 60 ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-red-100 text-red-800'
-                        }`}>
-                          {confidence}%
-                        </span>
-                      </div>
-                      <p className="text-sm text-muted-foreground line-clamp-3">
-                        {suggestion.description
-                          .replace(/^\d+\.\s*\*\*?([^*]+)\*\*?:\s*/, '') // Remove numbered prefixes like "2. **Description**:"
-                          .replace(/^\*\*([^*]+)\*\*:\s*/, '') // Remove markdown headers like "**Description**:"
-                          .replace(/^\*\*([^*]+)\*\*\s*/, '') // Remove markdown headers like "**Description**"
-                          .trim()}
-                      </p>
-                      <div className="mt-3 flex items-center justify-between">
-                        <span className="text-xs text-muted-foreground">
-                          Potential improvement: {estimatedSavings}%
-                        </span>
-                        <button className="text-xs text-primary hover:underline">
-                          View Details →
-                        </button>
-                      </div>
-                    </div>
-                  )
-                }) : null}
+                    recommendation={suggestion}
+                    onApply={handleApply}
+                    onRollback={handleRollback}
+                    onViewDetails={setSelectedSuggestion}
+                  />
+                )) : null}
               </div>
             )}
           </div>
@@ -919,6 +900,30 @@ export default function Dashboard() {
                 <p className="text-2xl font-bold">{historicalData.length}</p>
               </div>
             </div>
+          </div>
+        )}
+
+        {activeTab === 'audit' && (
+          <div className="space-y-6">
+            <AuditTab />
+          </div>
+        )}
+
+        {activeTab === 'baselines' && (
+          <div className="space-y-6">
+            <ConnectionBaselineTab />
+          </div>
+        )}
+
+        {activeTab === 'indexes' && (
+          <div className="space-y-6">
+            <IndexAdvisorTab />
+          </div>
+        )}
+
+        {activeTab === 'apply' && (
+          <div className="space-y-6">
+            <ApplyStatusDashboard />
           </div>
         )}
       </main>

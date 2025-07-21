@@ -48,28 +48,53 @@ Original Query:
 """
 
 RECOMMENDATION_PROMPT = """
-You are a PostgreSQL tuning assistant. Given the following query metrics and analysis, generate a specific, actionable recommendation to improve performance. 
+You are a PostgreSQL tuning assistant. Given the following query metrics and analysis, generate a specific, actionable recommendation to improve performance.
 
-**Format your response in Markdown:**
+**Critical Requirements:**
+1. For HIGH-IMPACT, LOW-RISK optimizations (missing indexes, redundant queries), provide executable SQL
+2. Only suggest CREATE INDEX CONCURRENTLY, ALTER SYSTEM, or SET commands for safety
+3. Always include rollback_sql for any sql_fix provided
+4. Be transparent about data source and impact assessment
 
-**Title**: A short, descriptive title (no markdown formatting, no numbered prefixes)
+**Response Format (JSON):**
+```json
+{{
+  "title": "Short, descriptive title (no markdown formatting)",
+  "description": "Detailed explanation with problem identification, root cause analysis, specific steps, and expected benefits",
+  "sql_fix": "CREATE INDEX CONCURRENTLY idx_table_column ON table(column); -- Only if HIGH-impact, LOW-risk",
+  "rollback_sql": "DROP INDEX CONCURRENTLY idx_table_column; -- Required if sql_fix provided",
+  "confidence": 85,
+  "estimated_improvement": "15%",
+  "risk_level": "Low"
+}}
+```
 
-**Description**: Detailed explanation with:
-- Problem identification (clearly state whether using actual metrics or calculated scores)
-- Root cause analysis  
-- Specific steps to implement
-- Expected benefits
+**SQL Fix Guidelines:**
+- Only for clear, high-impact optimizations (missing indexes on WHERE/JOIN columns)
+- Use CREATE INDEX CONCURRENTLY for safety (non-blocking)
+- Include proper index naming: idx_tablename_columnname
+- Provide accurate rollback_sql
+- Skip sql_fix for advisory-only recommendations
 
-**SQL Fix** (if applicable): The actual SQL to run (without markdown code blocks)
+**Data Analysis Guidelines:**
+1. If actual_metrics available: Use precise values (execution time, calls, cache hits)
+2. If no actual_metrics: State "Based on query pattern analysis"
+3. Always mention data source used for analysis
+4. For execution plans: Focus on sequential scans, missing indexes, large sorts
 
 Query Data:
 {query_data}
 
-**Important Guidelines:**
-1. If actual_metrics are available, use them for precise analysis and mention specific values (execution time, calls, cache hits, etc.)
-2. If no actual_metrics are available, clearly state "Based on query pattern analysis" and explain why the recommendation is made
-3. Always be transparent about the data source used for the analysis
-4. For SQL fixes, provide clean SQL without markdown formatting
+**Examples of HIGH-impact, LOW-risk fixes:**
+- Sequential scans with WHERE clauses → CREATE INDEX CONCURRENTLY
+- Missing indexes on JOIN columns → CREATE INDEX CONCURRENTLY
+- Unindexed ORDER BY columns → CREATE INDEX CONCURRENTLY
+
+**Examples requiring advisory-only (no sql_fix):**
+- Complex query rewrites
+- Schema changes
+- Application-level optimizations
+- Multi-table restructuring
 """
 
 async def call_gemini_api(prompt: str, max_tokens: int = 512) -> str:
@@ -88,7 +113,7 @@ async def call_gemini_api(prompt: str, max_tokens: int = 512) -> str:
             "temperature": 0.2
         }
     }
-    
+
     async with aiohttp.ClientSession() as session:
         async with session.post(url, headers=headers, json=data) as response:
             if response.status == 200:
@@ -111,7 +136,7 @@ async def call_deepseek_api(prompt: str, max_tokens: int = 512) -> str:
         "max_tokens": max_tokens,
         "temperature": 0.2
     }
-    
+
     async with aiohttp.ClientSession() as session:
         async with session.post(url, headers=headers, json=data) as response:
             if response.status == 200:
@@ -179,7 +204,7 @@ async def rewrite_query(sql: str) -> str:
 async def generate_recommendation(query_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Use LLM to generate a recommendation for a query.
-    Returns a dict with title, description, and optional SQL fix.
+    Returns a dict with title, description, sql_fix, rollback_sql, and metadata.
     Caches by query fingerprint + 'recommendation'.
     """
     # Use query_text if present for fingerprinting
@@ -195,34 +220,83 @@ async def generate_recommendation(query_data: Dict[str, Any]) -> Dict[str, Any]:
             pass
     prompt = RECOMMENDATION_PROMPT.format(query_data=query_data)
     try:
-        content = await call_llm_api(prompt, max_tokens=512)
+        content = await call_llm_api(prompt, max_tokens=1024)
         
-        # Simple parsing: expect title, description, and SQL fix if present
-        lines = content.split('\n')
-        title = lines[0].strip() if lines else "Recommendation"
-        description = "\n".join(lines[1:]).strip() if len(lines) > 1 else ""
-        sql_fix = None
-        for line in lines:
-            if line.strip().upper().startswith("SQL:"):
-                sql_fix = line.split(":", 1)[-1].strip()
-        
-        # Clean up title - remove any markdown formatting
-        if title.startswith('#') or title.startswith('##'):
-            title = title.lstrip('#').strip()
-        
-        result = {
-            "title": title,
-            "description": description,
-            "sql_fix": sql_fix
-        }
+        # Try to parse as JSON first (new format)
+        try:
+            # Extract JSON from content if it's wrapped in markdown code blocks
+            if '```json' in content:
+                json_start = content.find('```json') + 7
+                json_end = content.find('```', json_start)
+                if json_end != -1:
+                    content = content[json_start:json_end].strip()
+            elif '```' in content:
+                # Handle cases where it's just wrapped in ```
+                lines = content.split('\n')
+                in_code_block = False
+                json_lines = []
+                for line in lines:
+                    if line.strip() == '```':
+                        in_code_block = not in_code_block
+                        continue
+                    if in_code_block:
+                        json_lines.append(line)
+                content = '\n'.join(json_lines)
+            
+            # Parse the JSON
+            result = json.loads(content)
+            
+            # Validate required fields and set defaults
+            result = {
+                "title": result.get("title", "Optimization Recommendation"),
+                "description": result.get("description", "No description provided"),
+                "sql_fix": result.get("sql_fix"),
+                "rollback_sql": result.get("rollback_sql"),
+                "confidence": result.get("confidence", 75),
+                "estimated_improvement": result.get("estimated_improvement", "Unknown"),
+                "risk_level": result.get("risk_level", "Medium")
+            }
+            
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.warning(f"Failed to parse JSON response, falling back to text parsing: {e}")
+            # Fallback to old text parsing method
+            lines = content.split('\n')
+            title = lines[0].strip() if lines else "Recommendation"
+            description = "\n".join(lines[1:]).strip() if len(lines) > 1 else ""
+            
+            # Look for SQL fix in content
+            sql_fix = None
+            rollback_sql = None
+            for line in lines:
+                if line.strip().upper().startswith("SQL:") or "CREATE INDEX" in line.upper():
+                    sql_fix = line.split(":", 1)[-1].strip() if ":" in line else line.strip()
+                    break
+            
+            # Clean up title - remove any markdown formatting
+            if title.startswith('#') or title.startswith('##'):
+                title = title.lstrip('#').strip()
+            
+            result = {
+                "title": title,
+                "description": description,
+                "sql_fix": sql_fix,
+                "rollback_sql": rollback_sql,
+                "confidence": 75,
+                "estimated_improvement": "Unknown", 
+                "risk_level": "Medium"
+            }
         
         set_cache(cache_key, json.dumps(result))
-        logger.info(f"{ACTIVE_MODEL.title()} recommendation generated.")
+        logger.info(f"{ACTIVE_MODEL.title()} recommendation generated with executable SQL: {bool(result.get('sql_fix'))}")
         return result
     except Exception as e:
         logger.error(f"{ACTIVE_MODEL.title()} recommendation failed: {e}")
         return {
             "title": f"[{ACTIVE_MODEL.title()} recommendation unavailable]",
             "description": str(e),
-            "sql_fix": None
+            "sql_fix": None,
+            "rollback_sql": None,
+            "confidence": 0,
+            "estimated_improvement": "Unknown",
+            "risk_level": "Unknown"
         } 

@@ -1,0 +1,438 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { DatabaseIcon, RefreshCwIcon, AlertTriangleIcon, TrashIcon, PlayIcon } from 'lucide-react';
+
+interface IndexRecommendation {
+  id: string;
+  index_name: string;
+  table_name: string;
+  schema_name: string;
+  size_bytes: number;
+  size_pretty: string;
+  idx_scan: number;
+  idx_tup_read: number;
+  idx_tup_fetch: number;
+  last_used: string | null;
+  days_unused: number;
+  estimated_savings_mb: number;
+  risk_level: string;
+  recommendation_type: string;
+  sql_fix: string;
+  created_at: string;
+}
+
+interface IndexSummary {
+  total_recommendations: number;
+  recommendations_by_type: Record<string, number>;
+  recommendations_by_risk: Record<string, number>;
+  total_potential_savings_mb: number;
+  recent_recommendations_24h: number;
+}
+
+export default function IndexAdvisorTab() {
+  const [recommendations, setRecommendations] = useState<IndexRecommendation[]>([]);
+  const [summary, setSummary] = useState<IndexSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [filters, setFilters] = useState({
+    risk_level: '',
+    recommendation_type: '',
+    limit: 100
+  });
+
+  const fetchRecommendations = async () => {
+    try {
+      setLoading(true);
+      const params = new URLSearchParams();
+      
+      if (filters.risk_level) params.append('risk_level', filters.risk_level);
+      if (filters.recommendation_type) params.append('recommendation_type', filters.recommendation_type);
+      params.append('limit', filters.limit.toString());
+
+      const response = await fetch(`/api/index-advisor/recommendations?${params}`);
+      const data = await response.json();
+      
+      if (data.success) {
+        setRecommendations(data.data || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch recommendations:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchSummary = async () => {
+    try {
+      const response = await fetch('/api/index-advisor/summary');
+      const data = await response.json();
+      
+      if (data.success) {
+        setSummary(data.data || null);
+      }
+    } catch (error) {
+      console.error('Failed to fetch summary:', error);
+    }
+  };
+
+  const runAnalysis = async () => {
+    try {
+      setAnalyzing(true);
+      
+      // Get the current connection config from the connection status
+      const connectionResponse = await fetch('/api/connection/status');
+      const connectionData = await connectionResponse.json();
+      
+      if (!connectionData.connected) {
+        alert('No active database connection. Please connect to a database first.');
+        return;
+      }
+      
+      // Use the current connection config
+      const connectionConfig = connectionData.current_config;
+      
+      const response = await fetch('/api/index-advisor/analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          connection_config: connectionConfig
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        alert(`Analysis completed successfully!\n\nFound:\n- ${data.data.unused_indexes} unused indexes\n- ${data.data.redundant_indexes} redundant indexes\n- Total potential savings: ${data.data.total_potential_savings_mb.toFixed(1)} MB`);
+        fetchRecommendations();
+        fetchSummary();
+      } else {
+        alert(`Failed to run analysis: ${data.detail}`);
+      }
+    } catch (error) {
+      console.error('Failed to run analysis:', error);
+      alert('Failed to run analysis');
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const applyRecommendation = async (recommendationId: string) => {
+    if (!confirm('Are you sure you want to apply this recommendation? This will execute the SQL fix.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/index-advisor/recommendations/${recommendationId}/apply`, {
+        method: 'POST',
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        alert('Recommendation applied successfully');
+        fetchRecommendations();
+        fetchSummary();
+      } else {
+        alert(`Failed to apply recommendation: ${data.detail}`);
+      }
+    } catch (error) {
+      console.error('Failed to apply recommendation:', error);
+      alert('Failed to apply recommendation');
+    }
+  };
+
+  const deleteRecommendation = async (recommendationId: string) => {
+    if (!confirm('Are you sure you want to delete this recommendation?')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/index-advisor/recommendations/${recommendationId}`, {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        alert('Recommendation deleted successfully');
+        fetchRecommendations();
+        fetchSummary();
+      } else {
+        alert(`Failed to delete recommendation: ${data.detail}`);
+      }
+    } catch (error) {
+      console.error('Failed to delete recommendation:', error);
+      alert('Failed to delete recommendation');
+    }
+  };
+
+  useEffect(() => {
+    fetchRecommendations();
+    fetchSummary();
+  }, [filters]);
+
+  const formatDate = (dateString: string) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { 
+      month: 'short', 
+      day: '2-digit', 
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const getRiskLevelColor = (riskLevel: string) => {
+    switch (riskLevel?.toLowerCase()) {
+      case 'low': return 'bg-green-100 text-green-800';
+      case 'medium': return 'bg-yellow-100 text-yellow-800';
+      case 'high': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getRecommendationTypeColor = (type: string) => {
+    switch (type?.toLowerCase()) {
+      case 'drop': return 'bg-red-100 text-red-800';
+      case 'analyze': return 'bg-blue-100 text-blue-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const formatSize = (bytes: number) => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold">Index Advisor</h2>
+        <div className="flex gap-2">
+          <button 
+            onClick={() => { fetchRecommendations(); fetchSummary(); }} 
+            className="px-3 py-2 text-sm bg-white border border-gray-300 rounded-md hover:bg-gray-50 flex items-center gap-2"
+          >
+            <RefreshCwIcon className="h-4 w-4" />
+            Refresh
+          </button>
+          <button 
+            onClick={runAnalysis}
+            disabled={analyzing}
+            className="px-3 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+          >
+            {analyzing ? (
+              <>
+                <RefreshCwIcon className="h-4 w-4 animate-spin" />
+                Analyzing...
+              </>
+            ) : (
+              <>
+                <DatabaseIcon className="h-4 w-4" />
+                Run Analysis
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Summary Cards */}
+      {summary && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <div className="text-sm font-medium text-gray-600 mb-2">Total Recommendations</div>
+            <div className="text-2xl font-bold">{summary.total_recommendations}</div>
+          </div>
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <div className="text-sm font-medium text-gray-600 mb-2">Total Savings</div>
+            <div className="text-2xl font-bold text-green-600">{summary.total_potential_savings_mb?.toFixed(1) || '0.0'} MB</div>
+          </div>
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <div className="text-sm font-medium text-gray-600 mb-2">Drop Recommendations</div>
+            <div className="text-2xl font-bold text-red-600">{summary.recommendations_by_type.drop || 0}</div>
+          </div>
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <div className="text-sm font-medium text-gray-600 mb-2">Analyze Recommendations</div>
+            <div className="text-2xl font-bold text-yellow-600">{summary.recommendations_by_type.analyze || 0}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Risk Breakdown */}
+      {summary && (
+        <div className="bg-white p-6 rounded-lg border border-gray-200">
+          <h3 className="text-lg font-semibold mb-4">Risk Breakdown</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-green-600">{summary.recommendations_by_risk.low || 0}</div>
+              <div className="text-sm text-gray-600">Low Risk</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-yellow-600">{summary.recommendations_by_risk.medium || 0}</div>
+              <div className="text-sm text-gray-600">Medium Risk</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-red-600">{summary.recommendations_by_risk.high || 0}</div>
+              <div className="text-sm text-gray-600">High Risk</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Recent Activity */}
+      {summary && (
+        <div className="bg-white p-6 rounded-lg border border-gray-200">
+          <h3 className="text-lg font-semibold mb-4">Recent Activity</h3>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-blue-600">{summary.recent_recommendations_24h}</div>
+            <div className="text-sm text-gray-600">Recommendations in last 24h</div>
+          </div>
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="bg-white p-6 rounded-lg border border-gray-200">
+        <h3 className="text-lg font-semibold mb-4">Filters</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Risk Level</label>
+            <select 
+              value={filters.risk_level} 
+              onChange={(e) => setFilters(prev => ({ ...prev, risk_level: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">All risk levels</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Recommendation Type</label>
+            <select 
+              value={filters.recommendation_type} 
+              onChange={(e) => setFilters(prev => ({ ...prev, recommendation_type: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">All types</option>
+              <option value="drop">Drop</option>
+              <option value="analyze">Analyze</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Limit</label>
+            <select 
+              value={filters.limit} 
+              onChange={(e) => setFilters(prev => ({ ...prev, limit: parseInt(e.target.value) }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={200}>200</option>
+              <option value={500}>500</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Recommendations Table */}
+      <div className="bg-white rounded-lg border border-gray-200">
+        <div className="p-6 border-b border-gray-200">
+          <h3 className="text-lg font-semibold">Index Recommendations</h3>
+        </div>
+        <div className="p-6">
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <RefreshCwIcon className="h-8 w-8 animate-spin" />
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-3 px-4 font-medium text-gray-700">Index</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-700">Table</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-700">Size</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-700">Usage</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-700">Savings</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-700">Risk</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-700">Type</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-700">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(recommendations || []).map((rec) => (
+                    <tr key={rec.id} className="border-b border-gray-100 hover:bg-gray-50">
+                      <td className="py-3 px-4">
+                        <div className="font-medium">{rec.index_name}</div>
+                        <div className="text-sm text-gray-500">{rec.schema_name}</div>
+                      </td>
+                      <td className="py-3 px-4">{rec.table_name}</td>
+                      <td className="py-3 px-4">
+                        <div className="font-medium">{rec.size_pretty}</div>
+                        <div className="text-sm text-gray-500">{formatSize(rec.size_bytes)}</div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="font-medium">{rec.idx_scan} scans</div>
+                        <div className="text-sm text-gray-500">{rec.days_unused} days unused</div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="font-medium text-green-600">
+                          {rec.estimated_savings_mb.toFixed(1)} MB
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getRiskLevelColor(rec.risk_level)}`}>
+                          {rec.risk_level}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getRecommendationTypeColor(rec.recommendation_type)}`}>
+                          {rec.recommendation_type}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => applyRecommendation(rec.id)}
+                            className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded hover:bg-green-200 flex items-center gap-1"
+                            title="Apply recommendation"
+                          >
+                            <PlayIcon className="h-3 w-3" />
+                            Apply
+                          </button>
+                          <button
+                            onClick={() => deleteRecommendation(rec.id)}
+                            className="px-2 py-1 text-xs bg-red-100 text-red-800 rounded hover:bg-red-200 flex items-center gap-1"
+                            title="Delete recommendation"
+                          >
+                            <TrashIcon className="h-3 w-3" />
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              
+              {recommendations.length === 0 && (
+                <div className="text-center py-8 text-gray-500">
+                  No index recommendations found. Run an analysis to discover optimization opportunities.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+} 

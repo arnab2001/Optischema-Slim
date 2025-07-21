@@ -53,6 +53,21 @@ async def lifespan(app: FastAPI):
     analysis_task = loop.create_task(start_analysis_scheduler())
     logger.info("✅ Started analysis scheduler")
     
+    # Start the job manager
+    from job_manager import start_job_manager
+    await start_job_manager()
+    logger.info("✅ Started job manager")
+    
+    # Initialize replica manager
+    from replica_manager import initialize_replica_manager
+    await initialize_replica_manager()
+    logger.info("✅ Initialized replica manager")
+    
+    # Initialize apply manager
+    from apply_manager import initialize_apply_manager
+    await initialize_apply_manager()
+    logger.info("✅ Initialized apply manager")
+    
     logger.info("✅ OptiSchema backend started successfully")
     
     yield
@@ -75,6 +90,21 @@ async def lifespan(app: FastAPI):
     except asyncio.CancelledError:
         pass
     logger.info("✅ Analysis task cancelled")
+    
+    # Stop the job manager
+    from job_manager import stop_job_manager
+    await stop_job_manager()
+    logger.info("✅ Job manager stopped")
+    
+    # Close replica manager
+    from replica_manager import close_replica_manager
+    await close_replica_manager()
+    logger.info("✅ Replica manager closed")
+    
+    # Close apply manager
+    from apply_manager import close_apply_manager
+    await close_apply_manager()
+    logger.info("✅ Apply manager closed")
     
     # Close database connection pool
     await close_pool()
@@ -107,13 +137,19 @@ app.add_middleware(
 
 # Import routers
 from routers import metrics_router, suggestions_router, analysis_router
-from routers import connection
+from routers import connection, audit, connection_baseline, index_advisor
+from routers import benchmark, apply
 
 # Include routers
 app.include_router(metrics_router)
 app.include_router(suggestions_router)
 app.include_router(analysis_router)
+app.include_router(benchmark.router, prefix="/api", tags=["benchmark"])
 app.include_router(connection.router, prefix="/api/connection", tags=["connection"])
+app.include_router(audit.router, prefix="/api", tags=["audit"])
+app.include_router(connection_baseline.router, prefix="/api", tags=["connection-baseline"])
+app.include_router(index_advisor.router, prefix="/api", tags=["index-advisor"])
+app.include_router(apply.router, tags=["apply"])
 
 
 @app.get("/")

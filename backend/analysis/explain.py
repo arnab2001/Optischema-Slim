@@ -157,6 +157,171 @@ def extract_plan_metrics(plan_json: Dict[str, Any]) -> Dict[str, Any]:
     return metrics
 
 
+def extract_tables_from_plan(plan_json: Dict[str, Any]) -> List[str]:
+    """
+    Extract all table names referenced in an execution plan.
+    
+    Args:
+        plan_json: Raw execution plan JSON
+        
+    Returns:
+        List of unique table names
+    """
+    tables = set()
+    
+    def extract_from_node(node: Dict[str, Any]):
+        """Recursively extract table names from plan nodes."""
+        # Check for relation name (table name)
+        if 'Relation Name' in node:
+            table_name = node['Relation Name']
+            if table_name:
+                tables.add(table_name)
+        
+        # Check for index scan table references
+        if 'Index Name' in node and 'Relation Name' in node:
+            table_name = node['Relation Name']
+            if table_name:
+                tables.add(table_name)
+        
+        # Check for CTE references
+        if 'CTE Name' in node:
+            cte_name = node['CTE Name']
+            if cte_name:
+                tables.add(f"CTE_{cte_name}")
+        
+        # Check for subquery references
+        if 'Subplan Name' in node:
+            subplan_name = node['Subplan Name']
+            if subplan_name:
+                tables.add(f"SUBQUERY_{subplan_name}")
+        
+        # Recursively check children
+        if 'Plans' in node:
+            for child in node['Plans']:
+                extract_from_node(child)
+    
+    # Handle different plan structures
+    if isinstance(plan_json, list):
+        if len(plan_json) == 0:
+            return []
+        plan = plan_json[0]
+    elif isinstance(plan_json, dict):
+        plan = plan_json
+    else:
+        return []
+    
+    # Extract from the main plan
+    if 'Plan' in plan:
+        extract_from_node(plan['Plan'])
+    
+    return list(tables)
+
+
+def extract_table_dependencies(plan_json: Dict[str, Any]) -> Dict[str, List[str]]:
+    """
+    Extract table dependencies and relationships from execution plan.
+    
+    Args:
+        plan_json: Raw execution plan JSON
+        
+    Returns:
+        Dictionary mapping table names to their dependencies
+    """
+    dependencies = {}
+    
+    def analyze_node_dependencies(node: Dict[str, Any], parent_table: str = None):
+        """Analyze node for table dependencies."""
+        node_type = node.get('Node Type', '')
+        relation_name = node.get('Relation Name', '')
+        
+        if relation_name:
+            if relation_name not in dependencies:
+                dependencies[relation_name] = []
+            
+            if parent_table and parent_table != relation_name:
+                dependencies[relation_name].append(parent_table)
+        
+        # Handle join operations
+        if node_type in ['Hash Join', 'Nested Loop', 'Merge Join']:
+            join_type = node.get('Join Type', '')
+            hash_condition = node.get('Hash Cond', '')
+            merge_condition = node.get('Merge Cond', '')
+            
+            # Extract table names from join conditions
+            if hash_condition:
+                # Simple extraction - in production, use proper SQL parsing
+                tables_in_condition = extract_tables_from_condition(hash_condition)
+                for table in tables_in_condition:
+                    if table in dependencies:
+                        dependencies[table].extend(tables_in_condition)
+            
+            if merge_condition:
+                tables_in_condition = extract_tables_from_condition(merge_condition)
+                for table in tables_in_condition:
+                    if table in dependencies:
+                        dependencies[table].extend(tables_in_condition)
+        
+        # Recursively check children
+        if 'Plans' in node:
+            for child in node['Plans']:
+                analyze_node_dependencies(child, relation_name or parent_table)
+    
+    # Handle different plan structures
+    if isinstance(plan_json, list):
+        if len(plan_json) == 0:
+            return {}
+        plan = plan_json[0]
+    elif isinstance(plan_json, dict):
+        plan = plan_json
+    else:
+        return {}
+    
+    # Analyze from the main plan
+    if 'Plan' in plan:
+        analyze_node_dependencies(plan['Plan'])
+    
+    # Remove duplicates and self-references
+    for table in dependencies:
+        dependencies[table] = list(set(dependencies[table]))
+        if table in dependencies[table]:
+            dependencies[table].remove(table)
+    
+    return dependencies
+
+
+def extract_tables_from_condition(condition: str) -> List[str]:
+    """
+    Extract table names from a SQL condition string.
+    This is a simplified implementation - in production, use proper SQL parsing.
+    
+    Args:
+        condition: SQL condition string (e.g., "table1.column = table2.column")
+        
+    Returns:
+        List of table names found in the condition
+    """
+    tables = set()
+    
+    # Simple regex-based extraction
+    import re
+    
+    # Look for patterns like table.column or "table".column
+    patterns = [
+        r'([a-zA-Z_][a-zA-Z0-9_]*)\.([a-zA-Z_][a-zA-Z0-9_]*)',  # table.column
+        r'"([^"]+)"\.([a-zA-Z_][a-zA-Z0-9_]*)',  # "table".column
+    ]
+    
+    for pattern in patterns:
+        matches = re.findall(pattern, condition)
+        for match in matches:
+            if len(match) == 2:
+                table_name = match[0] if match[0] else match[1]
+                if table_name and not table_name.lower() in ['select', 'from', 'where', 'and', 'or', 'not']:
+                    tables.add(table_name)
+    
+    return list(tables)
+
+
 def detect_plan_bottlenecks(nodes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Detect performance bottlenecks in execution plan nodes.
@@ -262,9 +427,20 @@ async def analyze_execution_plan(query_text: str) -> Optional[ExecutionPlan]:
         # Extract metrics from plan
         metrics = extract_plan_metrics(plan_json)
         
+        # Extract tables from plan
+        tables = extract_tables_from_plan(plan_json)
+        table_dependencies = extract_table_dependencies(plan_json)
+        
+        # Add table information to plan JSON
+        enhanced_plan_json = {
+            **plan_json,
+            'extracted_tables': tables,
+            'table_dependencies': table_dependencies
+        }
+        
         # Create ExecutionPlan object
         execution_plan = ExecutionPlan(
-            plan_json=plan_json,
+            plan_json=enhanced_plan_json,
             total_cost=metrics.get('total_cost'),
             total_time=metrics.get('total_time'),
             planning_time=metrics.get('planning_time'),
@@ -272,7 +448,7 @@ async def analyze_execution_plan(query_text: str) -> Optional[ExecutionPlan]:
             nodes=metrics.get('nodes', [])
         )
         
-        logger.info(f"Execution plan analysis complete: {len(metrics.get('bottlenecks', []))} bottlenecks detected")
+        logger.info(f"Execution plan analysis complete: {len(metrics.get('bottlenecks', []))} bottlenecks detected, {len(tables)} tables extracted")
         
         return execution_plan
         

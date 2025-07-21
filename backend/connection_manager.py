@@ -112,6 +112,14 @@ class ConnectionManager:
                 if len(self._connection_history) > 10:
                     self._connection_history = self._connection_history[-10:]
                 
+                # Initialize schema manager with the new connection pool
+                try:
+                    from schema_manager import init_schema_manager
+                    init_schema_manager(pool)
+                    logger.info("Schema manager initialized with new connection pool")
+                except Exception as e:
+                    logger.warning(f"Failed to initialize schema manager: {e}")
+                
                 # Notify about connection change
                 await self._notify_connection_change()
                 

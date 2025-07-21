@@ -41,6 +41,7 @@ An AI-assisted database tuning service that monitors PostgreSQL workloads, ident
 - **Execution Plan Analysis**: Deep PostgreSQL explain plan parsing and bottleneck detection
 - **Real-time Communication**: WebSocket server for live updates
 - **Caching System**: SQLite-based caching for AI responses to reduce costs
+- **Data Processing**: Robust metrics collection with fallback to calculated scores
 
 ### Frontend (Next.js 14 + TypeScript + Tailwind)
 - **Live Dashboard**: Real-time performance metrics with responsive design
@@ -48,6 +49,8 @@ An AI-assisted database tuning service that monitors PostgreSQL workloads, ident
 - **AI Recommendations**: Interactive modals with confidence scoring and benchmarks
 - **Connection Management**: Database connection wizard with secure credential storage
 - **Dark Mode Support**: Full dark/light theme support with keyboard navigation
+- **Markdown Rendering**: Rich formatting for AI recommendations and explanations
+- **Advanced Analytics**: Interactive charts with heat maps and trend analysis
 
 ### Infrastructure (Docker Compose)
 - **PostgreSQL 14**: Main database with `pg_stat_statements` extension
@@ -62,19 +65,22 @@ An AI-assisted database tuning service that monitors PostgreSQL workloads, ident
 - Automatic identification of hot queries and performance bottlenecks
 - Execution plan analysis with detailed bottleneck detection
 - Business query filtering (excludes system queries)
+- Graceful fallback to calculated performance scores when metrics unavailable
 
 ### AI-Powered Analysis
 - Multi-model AI support (Gemini, DeepSeek) for query optimization
-- Plain-English explanations of execution plans
-- Intelligent query rewrite suggestions
+- Plain-English explanations of execution plans with markdown formatting
+- Intelligent query rewrite suggestions with proper JSON formatting
 - Strategic index and configuration recommendations
 - Confidence scoring and risk assessment
+- Transparent data source indicators (actual metrics vs calculated scores)
 
 ### One-Click Optimization
 - Safe sandbox environment for testing patches
 - Before/after performance benchmarking
 - Automatic rollback SQL generation
 - Cost-benefit projections for each optimization
+- Clean recommendation display without raw markdown artifacts
 
 ### Advanced UI Features
 - Responsive design with mobile optimization
@@ -82,6 +88,8 @@ An AI-assisted database tuning service that monitors PostgreSQL workloads, ident
 - Interactive query tables with sorting and filtering
 - Performance badges and visual indicators
 - Keyboard navigation and accessibility features
+- Advanced analytics with heat maps and trend visualization
+- Export functionality for reports and data
 
 ## 🛠️ Development
 
