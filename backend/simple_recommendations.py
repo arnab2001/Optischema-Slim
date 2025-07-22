@@ -10,6 +10,8 @@ from datetime import datetime
 import threading
 import uuid
 import json
+import tempfile
+import os
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -23,49 +25,61 @@ class SimpleRecommendationStore:
     
     @classmethod
     def _load_from_file(cls):
-        """Load recommendations from file."""
+        """Load recommendations from file with better error handling."""
         try:
             if cls._storage_file.exists():
                 with open(cls._storage_file, 'r') as f:
-                    cls._recommendations = json.load(f)
+                    content = f.read().strip()
+                    if content:
+                        cls._recommendations = json.loads(content)
+                    else:
+                        cls._recommendations = []
                 logger.info(f"📂 Loaded {len(cls._recommendations)} recommendations from file")
+            else:
+                cls._recommendations = []
+                logger.info("📂 No existing recommendations file found, starting fresh")
+        except json.JSONDecodeError as e:
+            logger.error(f"❌ Corrupted JSON file detected: {e}")
+            # Backup corrupted file and start fresh
+            backup_file = cls._storage_file.with_suffix('.json.bak')
+            try:
+                if cls._storage_file.exists():
+                    cls._storage_file.rename(backup_file)
+                    logger.info(f"📦 Backed up corrupted file to {backup_file}")
+            except Exception as backup_error:
+                logger.error(f"Failed to backup corrupted file: {backup_error}")
+            cls._recommendations = []
         except Exception as e:
             logger.warning(f"Failed to load recommendations from file: {e}")
             cls._recommendations = []
     
     @classmethod
     def _save_to_file(cls):
-        """Save recommendations to file."""
+        """Save recommendations to file using atomic write."""
         try:
+            # Ensure directory exists
             cls._storage_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(cls._storage_file, 'w') as f:
-                json.dump(cls._recommendations, f, indent=2)
+            
+            # Create temporary file for atomic write
+            temp_file = cls._storage_file.with_suffix('.tmp')
+            
+            # Write to temporary file first
+            with open(temp_file, 'w') as f:
+                json.dump(cls._recommendations, f, indent=2, ensure_ascii=False)
+            
+            # Atomic move to final location
+            temp_file.replace(cls._storage_file)
+            
             logger.debug(f"💾 Saved {len(cls._recommendations)} recommendations to file")
         except Exception as e:
             logger.error(f"Failed to save recommendations to file: {e}")
-    
-    @classmethod
-    def _load_from_file(cls):
-        """Load recommendations from file."""
-        try:
-            if cls._storage_file.exists():
-                with open(cls._storage_file, 'r') as f:
-                    cls._recommendations = json.load(f)
-                logger.info(f"📂 Loaded {len(cls._recommendations)} recommendations from file")
-        except Exception as e:
-            logger.warning(f"Failed to load recommendations from file: {e}")
-            cls._recommendations = []
-    
-    @classmethod
-    def _save_to_file(cls):
-        """Save recommendations to file."""
-        try:
-            cls._storage_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(cls._storage_file, 'w') as f:
-                json.dump(cls._recommendations, f, indent=2)
-            logger.debug(f"💾 Saved {len(cls._recommendations)} recommendations to file")
-        except Exception as e:
-            logger.error(f"Failed to save recommendations to file: {e}")
+            # Clean up temp file if it exists
+            temp_file = cls._storage_file.with_suffix('.tmp')
+            if temp_file.exists():
+                try:
+                    temp_file.unlink()
+                except:
+                    pass
     
     @classmethod
     def add_recommendation(cls, recommendation: Dict[str, Any]) -> str:
@@ -112,12 +126,33 @@ class SimpleRecommendationStore:
     def get_recommendation(cls, rec_id: str) -> Optional[Dict[str, Any]]:
         """Get a specific recommendation by ID."""
         with cls._lock:
-            if not cls._recommendations:
-                cls._load_from_file()
-            for rec in cls._recommendations:
-                if rec.get('id') == rec_id:
-                    return rec.copy()
-            return None
+            try:
+                if not cls._recommendations:
+                    cls._load_from_file()
+                
+                logger.info(f"🔍 Looking for recommendation ID: {rec_id}")
+                logger.info(f"📊 Total recommendations in store: {len(cls._recommendations)}")
+                
+                # Convert search ID to string for comparison
+                search_id_str = str(rec_id)
+                
+                for i, rec in enumerate(cls._recommendations):
+                    rec_id_in_store = rec.get('id')
+                    # Convert stored ID to string for comparison
+                    rec_id_str = str(rec_id_in_store)
+                    logger.debug(f"Checking recommendation {i}: {rec_id_str}")
+                    if rec_id_str == search_id_str:
+                        logger.info(f"✅ Found recommendation {rec_id}")
+                        return rec.copy()
+                
+                logger.warning(f"❌ Recommendation {rec_id} not found in store")
+                logger.info(f"Available IDs: {[str(r.get('id')) for r in cls._recommendations]}")
+                return None
+            except Exception as e:
+                logger.error(f"💥 Exception in get_recommendation for {rec_id}: {e}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                return None
     
     @classmethod
     def update_recommendation(cls, rec_id: str, updates: Dict[str, Any]) -> bool:

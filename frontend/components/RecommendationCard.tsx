@@ -40,10 +40,12 @@ export function RecommendationCard({
 
   // Clean up description
   const description = recommendation.description
-    .replace(/^\d+\.\s*\*\*?([^*]+)\*\*?:\s*/, '')
-    .replace(/^\*\*([^*]+)\*\*:\s*/, '')
-    .replace(/^\*\*([^*]+)\*\*\s*/, '')
-    .trim();
+    ? recommendation.description
+        .replace(/^\d+\.\s*\*\*?([^*]+)\*\*?:\s*/, '')
+        .replace(/^\*\*([^*]+)\*\*:\s*/, '')
+        .replace(/^\*\*([^*]+)\*\*\s*/, '')
+        .trim()
+    : '';
 
   // Check for existing benchmark job
   useEffect(() => {
