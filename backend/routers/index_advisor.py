@@ -5,16 +5,19 @@ Provides endpoints for analyzing and retrieving index recommendations.
 
 from fastapi import APIRouter, HTTPException, Query, Body
 from typing import Dict, Any, Optional
+from config import get_replica_database_config
 from index_advisor import IndexAdvisorService
 
 router = APIRouter()
 
 @router.post("/index-advisor/analyze")
 async def run_index_analysis(
-    connection_config: Dict[str, Any] = Body(..., description="Database connection configuration")
+    payload: Dict[str, Any] = Body(..., description="Database connection configuration or wrapper {connection_config}")
 ) -> Dict[str, Any]:
     """Run full index analysis and store recommendations"""
     try:
+        # Support both shapes: {host, port, ...} and {connection_config: {...}}
+        connection_config = payload.get("connection_config", payload)
         result = await IndexAdvisorService.run_full_analysis(connection_config)
         if result["success"]:
             return {
@@ -34,6 +37,60 @@ async def run_index_analysis(
             "message": f"Failed to run index analysis: {str(e)}",
             "error": str(e)
         }
+
+@router.post("/index-advisor/analyze/sandbox")
+async def run_index_analysis_sandbox() -> Dict[str, Any]:
+    """Run full index analysis against the sandbox/replica database."""
+    try:
+        replica_config = get_replica_database_config()
+        if not replica_config:
+            return {
+                "success": False,
+                "message": "Sandbox/replica database is not configured",
+                "error": "REPLICA_DATABASE_URL not set"
+            }
+
+        result = await IndexAdvisorService.run_full_analysis(replica_config)
+        if result["success"]:
+            return {
+                "success": True,
+                "message": f"Index analysis (sandbox) completed. Found {result['total_recommendations']} recommendations.",
+                "data": result
+            }
+        else:
+            return {
+                "success": False,
+                "message": f"Failed to run sandbox index analysis: {result.get('error', 'Unknown error')}",
+                "error": result.get('error', 'Unknown error')
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Failed to run sandbox index analysis: {str(e)}",
+            "error": str(e)
+        }
+
+@router.get("/index-advisor/present-indexes")
+async def get_present_indexes(
+    use_sandbox: bool = Query(False, description="If true, use sandbox/replica DB")
+):
+    """List present indexes for the current connection or sandbox."""
+    try:
+        if use_sandbox:
+            replica_config = get_replica_database_config()
+            if not replica_config:
+                return {"success": False, "error": "Sandbox/replica not configured"}
+            items = await IndexAdvisorService.list_present_indexes(replica_config)
+        else:
+            # Use current connection
+            from connection_manager import connection_manager
+            config = connection_manager.get_current_config()
+            if not config:
+                return {"success": False, "error": "No active connection"}
+            items = await IndexAdvisorService.list_present_indexes(config)
+        return {"success": True, "data": items, "count": len(items)}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 @router.get("/index-advisor/recommendations")
 async def get_index_recommendations(

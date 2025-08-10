@@ -274,6 +274,31 @@ async def apply_optimization(conn: asyncpg.Connection, recommendation: Dict[str,
         if not sql_fix:
             return False  # This is causing "Failed to apply optimization in sandbox"
         
+        # Ensure we operate on sampled tables inside sandbox schema by default
+        try:
+            await conn.execute("SET search_path = sandbox, public")
+        except Exception:
+            pass
+
+        # Idempotency: for CREATE INDEX, skip if already exists
+        sql_upper = sql_fix.strip().upper()
+        if sql_upper.startswith('CREATE INDEX'):
+            import re
+            name_match = re.search(r'CREATE\s+INDEX\s+(?:CONCURRENTLY\s+)?(\w+)\s+ON', sql_fix, re.IGNORECASE)
+            if name_match:
+                index_name = name_match.group(1)
+                exists = await conn.fetchval(
+                    """
+                    SELECT EXISTS (
+                        SELECT 1 FROM pg_indexes 
+                        WHERE schemaname = 'sandbox' AND indexname = $1
+                    )
+                    """,
+                    index_name,
+                )
+                if exists:
+                    return True
+        
         # Execute the optimization SQL
         await conn.execute(sql_fix)
         return True

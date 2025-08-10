@@ -40,6 +40,14 @@ export default function IndexAdvisorTab() {
     recommendation_type: '',
     limit: 100
   });
+  const [useSandbox, setUseSandbox] = useState(false);
+  const [presentIndexes, setPresentIndexes] = useState<any[]>([]);
+  const [loadingIndexes, setLoadingIndexes] = useState(false);
+  const [collapseDuplicates, setCollapseDuplicates] = useState(true);
+  const [showUnusedOnly, setShowUnusedOnly] = useState(false);
+  const [showLowUsageOnly, setShowLowUsageOnly] = useState(false);
+  const [topN, setTopN] = useState(100);
+  const [schemaFilter, setSchemaFilter] = useState('');
 
   const fetchRecommendations = async () => {
     try {
@@ -79,28 +87,24 @@ export default function IndexAdvisorTab() {
   const runAnalysis = async () => {
     try {
       setAnalyzing(true);
-      
-      // Get the current connection config from the connection status
-      const connectionResponse = await fetch('/api/connection/status');
-      const connectionData = await connectionResponse.json();
-      
-      if (!connectionData.connected) {
-        alert('No active database connection. Please connect to a database first.');
-        return;
+      let response: Response;
+      if (useSandbox) {
+        response = await fetch('/api/index-advisor/analyze/sandbox', { method: 'POST' });
+      } else {
+        // Get the current connection config from the connection status
+        const connectionResponse = await fetch('/api/connection/status');
+        const connectionData = await connectionResponse.json();
+        if (!connectionData.connected) {
+          alert('No active database connection. Please connect to a database first.');
+          return;
+        }
+        const connectionConfig = connectionData.current_config;
+        response = await fetch('/api/index-advisor/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ connection_config: connectionConfig }),
+        });
       }
-      
-      // Use the current connection config
-      const connectionConfig = connectionData.current_config;
-      
-      const response = await fetch('/api/index-advisor/analyze', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          connection_config: connectionConfig
-        }),
-      });
 
       const data = await response.json();
       
@@ -118,6 +122,97 @@ export default function IndexAdvisorTab() {
       setAnalyzing(false);
     }
   };
+
+  const fetchPresentIndexes = async () => {
+    try {
+      setLoadingIndexes(true);
+      const response = await fetch(`/api/index-advisor/present-indexes?use_sandbox=${useSandbox ? 'true' : 'false'}`);
+      const data = await response.json();
+      if (data.success) {
+        setPresentIndexes(data.data || []);
+      } else {
+        setPresentIndexes([]);
+      }
+    } catch (e) {
+      console.error('Failed to fetch present indexes:', e);
+      setPresentIndexes([]);
+    } finally {
+      setLoadingIndexes(false);
+    }
+  };
+
+  // Auto-load indexes on mount and when toggling sandbox
+  useEffect(() => {
+    fetchPresentIndexes();
+  }, []);
+  useEffect(() => {
+    fetchPresentIndexes();
+  }, [useSandbox]);
+
+  const normalizeDefinition = (def: string) => {
+    if (!def) return '';
+    try {
+      // Remove schema qualifications like "schema".table or schema.table
+      return def
+        .replace(/"[^"\s]+"\./g, '')
+        .replace(/\b[a-zA-Z_][a-zA-Z0-9_]*\./g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    } catch {
+      return def;
+    }
+  };
+
+  const filteredIndexes = React.useMemo(() => {
+    let list = [...presentIndexes];
+    if (schemaFilter.trim()) {
+      const f = schemaFilter.trim().toLowerCase();
+      list = list.filter((idx) => `${idx.schema_name}`.toLowerCase().includes(f));
+    }
+    if (showUnusedOnly) {
+      list = list.filter((idx) => (idx.idx_scan ?? 0) === 0);
+    }
+    if (showLowUsageOnly) {
+      list = list.filter((idx) => (idx.idx_scan ?? 0) > 0 && (idx.idx_scan ?? 0) < 10);
+    }
+    // Sort by size descending by default to surface largest
+    list.sort((a, b) => (b.size_bytes || 0) - (a.size_bytes || 0));
+    return list;
+  }, [presentIndexes, schemaFilter, showUnusedOnly, showLowUsageOnly]);
+
+  const groupedIndexes = React.useMemo(() => {
+    if (!collapseDuplicates) return filteredIndexes.slice(0, topN);
+    const groups: Record<string, any> = {};
+    for (const idx of filteredIndexes) {
+      const signature = `${idx.index_name}::${idx.table_name}::${normalizeDefinition(idx.index_definition)}`;
+      if (!groups[signature]) {
+        groups[signature] = {
+          ...idx,
+          schemas_count: 1,
+          schemas: new Set<string>([idx.schema_name]),
+          total_size_bytes: idx.size_bytes || 0,
+          max_idx_scan: idx.idx_scan || 0,
+        };
+      } else {
+        const g = groups[signature];
+        g.schemas.add(idx.schema_name);
+        g.schemas_count = g.schemas.size;
+        g.total_size_bytes += idx.size_bytes || 0;
+        g.max_idx_scan = Math.max(g.max_idx_scan, idx.idx_scan || 0);
+        // Prefer the largest definition row as representative
+        if ((idx.size_bytes || 0) > (g.size_bytes || 0)) {
+          g.schema_name = idx.schema_name;
+          g.table_name = idx.table_name;
+          g.index_definition = idx.index_definition;
+          g.size_bytes = idx.size_bytes;
+          g.size_pretty = idx.size_pretty;
+        }
+      }
+    }
+    const aggregated = Object.values(groups)
+      .sort((a: any, b: any) => (b.total_size_bytes || 0) - (a.total_size_bytes || 0));
+    return aggregated.slice(0, topN);
+  }, [filteredIndexes, collapseDuplicates, topN]);
 
   const applyRecommendation = async (recommendationId: string) => {
     if (!confirm('Are you sure you want to apply this recommendation? This will execute the SQL fix.')) {
@@ -216,7 +311,15 @@ export default function IndexAdvisorTab() {
       {/* Header */}
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">Index Advisor</h2>
-        <div className="flex gap-2">
+        <div className="flex gap-3 items-center">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={useSandbox}
+              onChange={(e) => { setUseSandbox(e.target.checked); }}
+            />
+            Use Sandbox DB
+          </label>
           <button 
             onClick={() => { fetchRecommendations(); fetchSummary(); }} 
             className="px-3 py-2 text-sm bg-white border border-gray-300 rounded-md hover:bg-gray-50 flex items-center gap-2"
@@ -244,8 +347,16 @@ export default function IndexAdvisorTab() {
         </div>
       </div>
 
-      {/* Summary Cards */}
-      {summary && (
+      {/* Summary Cards (hidden if all zeros) */}
+      {(() => {
+        const hasData = !!summary && (
+          (summary.total_recommendations || 0) > 0 ||
+          (summary.total_potential_savings_mb || 0) > 0 ||
+          (summary.recommendations_by_type?.drop || 0) > 0 ||
+          (summary.recommendations_by_type?.analyze || 0) > 0
+        );
+        return hasData;
+      })() && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white p-4 rounded-lg border border-gray-200">
             <div className="text-sm font-medium text-gray-600 mb-2">Total Recommendations</div>
@@ -266,8 +377,11 @@ export default function IndexAdvisorTab() {
         </div>
       )}
 
-      {/* Risk Breakdown */}
-      {summary && (
+      {/* Risk Breakdown (hidden if all zeros) */}
+      {(() => {
+        const totalRisk = (summary?.recommendations_by_risk?.low || 0) + (summary?.recommendations_by_risk?.medium || 0) + (summary?.recommendations_by_risk?.high || 0);
+        return totalRisk > 0;
+      })() && (
         <div className="bg-white p-6 rounded-lg border border-gray-200">
           <h3 className="text-lg font-semibold mb-4">Risk Breakdown</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -287,8 +401,8 @@ export default function IndexAdvisorTab() {
         </div>
       )}
 
-      {/* Recent Activity */}
-      {summary && (
+      {/* Recent Activity (hidden if zero) */}
+      {(summary?.recent_recommendations_24h || 0) > 0 && (
         <div className="bg-white p-6 rounded-lg border border-gray-200">
           <h3 className="text-lg font-semibold mb-4">Recent Activity</h3>
           <div className="text-center">
@@ -428,6 +542,100 @@ export default function IndexAdvisorTab() {
                 <div className="text-center py-8 text-gray-500">
                   No index recommendations found. Run an analysis to discover optimization opportunities.
                 </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Present Indexes Table */}
+      <div className="bg-white rounded-lg border border-gray-200">
+        <div className="p-6 border-b border-gray-200 flex items-center justify-between gap-4 flex-wrap">
+          <h3 className="text-lg font-semibold">Present Indexes {useSandbox ? '(Sandbox)' : '(Connected DB)'}</h3>
+          <div className="flex items-center gap-3">
+            <input
+              type="text"
+              placeholder="Filter schema..."
+              value={schemaFilter}
+              onChange={(e) => setSchemaFilter(e.target.value)}
+              className="px-2 py-1 text-sm border rounded"
+            />
+            <label className="text-sm flex items-center gap-2">
+              <input type="checkbox" checked={showUnusedOnly} onChange={(e) => setShowUnusedOnly(e.target.checked)} />
+              Unused only
+            </label>
+            <label className="text-sm flex items-center gap-2">
+              <input type="checkbox" checked={showLowUsageOnly} onChange={(e) => setShowLowUsageOnly(e.target.checked)} />
+              Low usage (&lt;10 scans)
+            </label>
+            <label className="text-sm flex items-center gap-2">
+              <input type="checkbox" checked={collapseDuplicates} onChange={(e) => setCollapseDuplicates(e.target.checked)} />
+              Collapse per-tenant duplicates
+            </label>
+            <label className="text-sm flex items-center gap-2">
+              Top
+              <select className="px-2 py-1 text-sm border rounded" value={topN} onChange={(e) => setTopN(parseInt(e.target.value))}>
+                {[50, 100, 200, 500, 1000].map(n => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+            </label>
+            <button 
+              onClick={fetchPresentIndexes}
+              className="px-3 py-2 text-sm bg-white border border-gray-300 rounded-md hover:bg-gray-50 flex items-center gap-2"
+            >
+              <RefreshCwIcon className="h-4 w-4" />
+              Refresh
+            </button>
+          </div>
+        </div>
+        <div className="p-6">
+          {loadingIndexes ? (
+            <div className="flex justify-center py-8">
+              <RefreshCwIcon className="h-8 w-8 animate-spin" />
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-3 px-4 font-medium text-gray-700">Index</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-700">Table</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-700">Size</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-700">Usage</th>
+                    {collapseDuplicates && <th className="text-left py-3 px-4 font-medium text-gray-700">Schemas</th>}
+                    <th className="text-left py-3 px-4 font-medium text-gray-700">Definition</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(groupedIndexes || []).map((idx: any) => (
+                    <tr key={`${idx.schema_name}.${idx.index_name}.${idx.index_definition}`} className="border-b border-gray-100 hover:bg-gray-50">
+                      <td className="py-3 px-4">
+                        <div className="font-medium">{idx.index_name}</div>
+                        <div className="text-sm text-gray-500">{idx.schema_name}</div>
+                      </td>
+                      <td className="py-3 px-4">{idx.table_name}</td>
+                      <td className="py-3 px-4">
+                        <div className="font-medium">{collapseDuplicates ? formatSize(idx.total_size_bytes) : idx.size_pretty}</div>
+                        {!collapseDuplicates && (
+                          <div className="text-sm text-gray-500">{formatSize(idx.size_bytes)}</div>
+                        )}
+                      </td>
+                      <td className="py-3 px-4">{collapseDuplicates ? (idx.max_idx_scan || 0) : (idx.idx_scan || 0)} scans</td>
+                      {collapseDuplicates && (
+                        <td className="py-3 px-4">{idx.schemas_count}</td>
+                      )}
+                      <td className="py-3 px-4">
+                        <code className="text-xs bg-gray-100 px-1 py-0.5 rounded inline-block max-w-[500px] truncate" title={idx.index_definition}>
+                          {idx.index_definition}
+                        </code>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {groupedIndexes.length === 0 && (
+                <div className="text-center py-8 text-gray-500">No indexes found.</div>
               )}
             </div>
           )}

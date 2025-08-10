@@ -161,7 +161,12 @@ class SimpleRecommendationStore:
             if not cls._recommendations:
                 cls._load_from_file()
             for i, rec in enumerate(cls._recommendations):
-                if rec.get('id') == rec_id:
+                # Compare IDs as strings to handle UUID vs string mismatches
+                try:
+                    current_id_str = str(rec.get('id'))
+                except Exception:
+                    current_id_str = rec.get('id')
+                if str(rec_id) == current_id_str:
                     # Update the recommendation in-place
                     cls._recommendations[i].update(updates)
                     cls._save_to_file()  # Persist changes

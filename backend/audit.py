@@ -75,6 +75,29 @@ class AuditService:
         conn = sqlite3.connect(str(cls.DB_PATH))
         cursor = conn.cursor()
         
+        # Basic deduplication: avoid spamming the same applied event for the same recommendation within a short window
+        try:
+            if action_type == 'recommendation_applied' and recommendation_id:
+                cursor.execute(
+                    """
+                    SELECT id FROM audit_logs
+                    WHERE action_type = ? AND recommendation_id = ?
+                      AND created_at >= datetime('now', '-5 minutes')
+                    ORDER BY created_at DESC LIMIT 1
+                    """,
+                    (action_type, recommendation_id)
+                )
+                row = cursor.fetchone()
+                if row:
+                    # Return existing audit id without inserting a duplicate
+                    existing_id = row[0]
+                    conn.close()
+                    logger.info("Skipping duplicate audit log for recommendation_applied within 5 minutes")
+                    return existing_id
+        except Exception:
+            # If dedup check fails, continue with logging rather than crashing
+            pass
+        
         cursor.execute('''
             INSERT INTO audit_logs (
                 id, action_type, user_id, recommendation_id, query_hash,

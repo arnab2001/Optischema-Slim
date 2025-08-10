@@ -27,7 +27,7 @@ export function RecommendationCard({
   const type = recommendation.recommendation_type || recommendation.type;
   const confidence = recommendation.confidence_score || recommendation.confidence || 0;
   const estimatedSavings = recommendation.estimated_improvement_percent || recommendation.estimated_savings || 0;
-  const isApplied = recommendation.applied || false;
+  const isApplied = recommendation.applied || recommendation.status === 'applied' || false;
   const status = recommendation.status || 'pending';
 
   // Clean up title

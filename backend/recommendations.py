@@ -9,6 +9,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 from models import QueryMetrics, Recommendation, AnalysisResult
 from analysis.core import detect_basic_issues
+from analysis.explain import get_plan_summary
 from analysis.llm import generate_recommendation, rewrite_query
 
 logger = logging.getLogger(__name__)
@@ -90,6 +91,34 @@ async def generate_recommendations_for_analysis(analysis: AnalysisResult) -> Lis
     
     # Fallback to heuristic recommendations only if AI failed or provided no executable SQL
     if not recs or not recs[0].sql_fix:
+        # Attempt to craft schema-aware SQL if plan/table details are present
+        def build_index_sql_from_plan() -> Optional[str]:
+            try:
+                if not analysis.execution_plan:
+                    return None
+                summary = get_plan_summary(analysis.execution_plan)
+                # Try to infer an index suggestion from insights if a filter is present
+                for node in analysis.execution_plan.nodes:
+                    relation = node.get('relation_name') or ''
+                    filter_cond = node.get('filter') or ''
+                    sort_key = node.get('sort_key') or []
+                    if relation and filter_cond:
+                        # Extremely simple extraction of column names from filter
+                        import re
+                        cols = list({m.group(2) for m in re.finditer(r'(?:"?([A-Za-z_][A-Za-z0-9_]*)"?\.)?"?([A-Za-z_][A-Za-z0-9_]*)"?', filter_cond)})
+                        cols = [c for c in cols if c.lower() not in {'and','or','not'}]
+                        if cols:
+                            cols_sql = ', '.join(f'"{c}"' for c in cols[:3])
+                            return f'CREATE INDEX IF NOT EXISTS idx_{relation}_auto ON "{relation}" ({cols_sql});'
+                    if relation and sort_key:
+                        keys_sql = ', '.join(sort_key[:3]) if isinstance(sort_key, list) else str(sort_key)
+                        return f'CREATE INDEX IF NOT EXISTS idx_{relation}_order ON "{relation}" ({keys_sql});'
+            except Exception:
+                return None
+            return None
+
+        sql_from_plan = build_index_sql_from_plan()
+
         # Generate ONE best heuristic recommendation based on bottleneck type
         if analysis.bottleneck_type in ("sequential_scan", "missing_index"):
             recs.append(Recommendation(
@@ -98,7 +127,7 @@ async def generate_recommendations_for_analysis(analysis: AnalysisResult) -> Lis
                 recommendation_type="index",
                 title="Add Index to Improve Performance",
                 description=f"This query shows signs of {analysis.bottleneck_type}. Consider adding an index to improve query performance. Analyze the WHERE and JOIN clauses to identify the best columns for indexing.",
-                sql_fix=None,  # Heuristic recommendations are advisory-only
+                sql_fix=sql_from_plan,
                 estimated_improvement_percent=estimate_improvement(analysis),
                 confidence_score=score_recommendation(analysis),
                 risk_level="low",
@@ -112,7 +141,7 @@ async def generate_recommendations_for_analysis(analysis: AnalysisResult) -> Lis
                 recommendation_type="index",
                 title="Add Index for ORDER BY Performance",
                 description="This query performs large sorts. Consider adding an index on the ORDER BY columns to eliminate the sort operation and improve performance.",
-                sql_fix=None,  # Heuristic recommendations are advisory-only
+                sql_fix=sql_from_plan,
                 estimated_improvement_percent=estimate_improvement(analysis),
                 confidence_score=score_recommendation(analysis),
                 risk_level="low",

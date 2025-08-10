@@ -552,3 +552,79 @@ class IndexAdvisorService:
                 "success": False,
                 "error": str(e)
             } 
+
+    @staticmethod
+    async def list_present_indexes(connection_config: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        List current indexes with size and usage for the given connection.
+        """
+        try:
+            # Handle SSL configuration for RDS
+            config = connection_config.copy()
+            if config.get('ssl') == 'require':
+                config['ssl'] = True
+            elif config.get('ssl') == 'prefer':
+                config['ssl'] = True
+            elif config.get('ssl') == 'disable':
+                config['ssl'] = False
+
+            if config.get('ssl') and config.get('ssl') is not False:
+                import ssl
+                config['ssl'] = ssl.create_default_context()
+                config['ssl'].check_hostname = False
+                config['ssl'].verify_mode = ssl.CERT_NONE
+
+            conn = await asyncpg.connect(**config)
+
+            # Query to fetch present indexes with size and usage
+            query = """
+                WITH indexed AS (
+                  SELECT 
+                    i.schemaname AS schema_name,
+                    i.tablename AS table_name,
+                    i.indexname AS index_name,
+                    i.indexdef AS index_definition
+                  FROM pg_indexes i
+                  WHERE i.schemaname NOT IN ('pg_catalog', 'information_schema')
+                ), sizes AS (
+                  SELECT 
+                    c.relname AS index_name,
+                    pg_relation_size(c.oid) AS size_bytes,
+                    pg_size_pretty(pg_relation_size(c.oid)) AS size_pretty
+                  FROM pg_class c
+                  WHERE c.relkind = 'i'
+                )
+                SELECT 
+                  idx.schema_name,
+                  idx.table_name,
+                  idx.index_name,
+                  idx.index_definition,
+                  COALESCE(sz.size_bytes, 0) AS size_bytes,
+                  COALESCE(sz.size_pretty, '0 bytes') AS size_pretty,
+                  COALESCE(psui.idx_scan, 0) AS idx_scan
+                FROM indexed idx
+                LEFT JOIN sizes sz ON sz.index_name = idx.index_name
+                LEFT JOIN pg_stat_user_indexes psui 
+                  ON psui.schemaname = idx.schema_name AND psui.indexrelname = idx.index_name
+                ORDER BY sz.size_bytes DESC, idx.schema_name, idx.table_name, idx.index_name
+                LIMIT 1000
+            """
+
+            rows = await conn.fetch(query)
+            await conn.close()
+
+            result: List[Dict[str, Any]] = []
+            for row in rows:
+                result.append({
+                    'schema_name': row['schema_name'],
+                    'table_name': row['table_name'],
+                    'index_name': row['index_name'],
+                    'index_definition': row['index_definition'],
+                    'size_bytes': row['size_bytes'],
+                    'size_pretty': row['size_pretty'],
+                    'idx_scan': row['idx_scan'],
+                })
+            return result
+        except Exception as e:
+            logger.error(f"Failed to list present indexes: {e}")
+            return []

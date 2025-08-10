@@ -49,8 +49,32 @@ SELECT
     blk_read_time::FLOAT8,
     blk_write_time::FLOAT8
 FROM pg_stat_statements
-WHERE query NOT ILIKE 'EXPLAIN%' 
+WHERE 1=1
+  -- Exclude obvious maintenance and system queries
+  AND query NOT ILIKE 'EXPLAIN%'
   AND query NOT ILIKE 'DEALLOCATE%'
+  AND query NOT ILIKE 'SET %'
+  AND query NOT ILIKE 'SHOW %'
+  AND query NOT ILIKE 'BEGIN%'
+  AND query NOT ILIKE 'COMMIT%'
+  AND query NOT ILIKE 'ROLLBACK%'
+  AND query NOT ILIKE 'SAVEPOINT%'
+  AND query NOT ILIKE 'FETCH %'
+  AND query NOT ILIKE 'MOVE %'
+  AND query NOT ILIKE 'DECLARE %'
+  AND query NOT ILIKE '%query-cursor_%'
+  -- Exclude pg_catalog/information_schema and RDS helper calls
+  AND query NOT ILIKE 'SELECT%FROM pg\_%'
+  AND query NOT ILIKE 'SELECT%FROM information_schema.%'
+  AND query NOT ILIKE 'SELECT pg\_%(%'
+  AND query NOT ILIKE 'SELECT%FROM pg_show_all_settings%'
+  AND query NOT ILIKE '%pg_settings%'
+  AND query NOT ILIKE 'SELECT rds\_%'
+  -- Very small literal-only selects like SELECT $1
+  AND NOT (query ~* '^\\s*SELECT\\s+\\$[0-9]+')
+  -- Specific noisy statements
+  AND query NOT ILIKE 'SET statement_timeout%'
+  AND query NOT ILIKE 'SELECT pg_switch_wal%'
   AND calls >= $1
   AND mean_exec_time >= $2
 ORDER BY total_exec_time DESC
@@ -88,7 +112,28 @@ async def fetch_pg_stat() -> List[QueryMetrics]:
             total_queries = await conn.fetchval("""
                 SELECT COUNT(*) as total_queries 
                 FROM pg_stat_statements
-                WHERE query NOT ILIKE 'EXPLAIN%' AND query NOT ILIKE 'DEALLOCATE%'
+                WHERE 1=1
+                  AND query NOT ILIKE 'EXPLAIN%'
+                  AND query NOT ILIKE 'DEALLOCATE%'
+                  AND query NOT ILIKE 'SET %'
+                  AND query NOT ILIKE 'SHOW %'
+                  AND query NOT ILIKE 'BEGIN%'
+                  AND query NOT ILIKE 'COMMIT%'
+                  AND query NOT ILIKE 'ROLLBACK%'
+                  AND query NOT ILIKE 'SAVEPOINT%'
+                  AND query NOT ILIKE 'FETCH %'
+                  AND query NOT ILIKE 'MOVE %'
+                  AND query NOT ILIKE 'DECLARE %'
+                  AND query NOT ILIKE '%query-cursor_%'
+                  AND query NOT ILIKE 'SELECT%FROM pg\_%'
+                  AND query NOT ILIKE 'SELECT%FROM information_schema.%'
+                  AND query NOT ILIKE 'SELECT pg\_%(%'
+                  AND query NOT ILIKE 'SELECT%FROM pg_show_all_settings%'
+                  AND query NOT ILIKE '%pg_settings%'
+                  AND query NOT ILIKE 'SELECT rds\_%'
+                  AND NOT (query ~* '^\\s*SELECT\\s+\\$[0-9]+')
+                  AND query NOT ILIKE 'SET statement_timeout%'
+                  AND query NOT ILIKE 'SELECT pg_switch_wal%'
             """)
             
             logger.info(f"pg_stat_statements contains {total_queries} queries")
@@ -122,7 +167,27 @@ async def fetch_pg_stat() -> List[QueryMetrics]:
         total_time = sum(row['total_time'] for row in rows) if rows else 0
         
         metrics = []
-        for row in rows:
+        # Final safety filter in Python for any stragglers
+        def _is_system_like(q: str) -> bool:
+            ql = q.strip().lower()
+            prefixes = (
+                'explain', 'deallocate', 'set ', 'show ', 'begin', 'commit', 'rollback',
+                'savepoint', 'fetch ', 'move ', 'declare '
+            )
+            if any(ql.startswith(p) for p in prefixes):
+                return True
+            if 'query-cursor_' in ql:
+                return True
+            if ' pg_' in ql or 'information_schema' in ql or 'pg_settings' in ql:
+                # Heuristic: exclude queries obviously touching system catalogs
+                return True
+            if ql.startswith('select $'):
+                return True
+            if ql.startswith('select pg_') or 'select pg_switch_wal' in ql:
+                return True
+            return False
+
+        for row in (r for r in rows if not _is_system_like(r['query'])):
             # Calculate percentage of total time
             percentage_of_total_time = (row['total_time'] / total_time * 100) if total_time > 0 else 0
             

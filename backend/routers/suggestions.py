@@ -330,13 +330,15 @@ async def apply_and_test_suggestion(request: Dict[str, Any]) -> Dict[str, Any]:
         if apply_result.get("success"):
             from datetime import datetime
             applied_at = apply_result.get("applied_at", datetime.utcnow().isoformat())
-            SimpleRecommendationStore.update_recommendation(recommendation_id, {
+            # Normalize SQL to ensure rollback can be generated reliably
+            original_sql = recommendation.get("sql_fix", "")
+            SimpleRecommendationStore.update_recommendation(str(recommendation_id), {
                 "applied": True,
                 "applied_at": applied_at,
                 "status": "applied",
                 "rollback_info": {
                     "method": "apply_and_test",
-                    "original_sql": recommendation.get("sql_fix", ""),
+                    "original_sql": original_sql,
                     "applied_at": applied_at,
                     "rollback_available": True
                 }

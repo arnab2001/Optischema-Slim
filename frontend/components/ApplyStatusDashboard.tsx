@@ -7,6 +7,7 @@ export function ApplyStatusDashboard() {
   const [status, setStatus] = useState<any>(null);
   const [changes, setChanges] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [auditFallback, setAuditFallback] = useState<any[]>([]);
 
   const fetchStatus = async () => {
     setIsLoading(true);
@@ -25,6 +26,32 @@ export function ApplyStatusDashboard() {
       
       if (changesResult.success) {
         setChanges(changesResult.data.changes || []);
+      }
+      
+      // Fallback to audit logs if no in-memory changes present
+      if ((!changesResult.success || (changesResult.data?.changes || []).length === 0)) {
+        try {
+          const auditRes = await fetch('/api/audit/logs?action_type=recommendation_applied&limit=50');
+          const auditData = await auditRes.json();
+          if (auditData.success) {
+            const mapped = (auditData.data || []).map((log: any) => ({
+              status: log.status || 'applied',
+              applied_at: log.created_at,
+              recommendation_id: log.recommendation_id,
+              sql_executed: (log.details && (log.details.sql_executed || log.details.ddl_executed)) || '',
+              schema_name: (log.details && log.details.schema_name) || 'sandbox',
+              rollback_sql: (log.details && log.details.rollback_sql) || null,
+              rolled_back_at: null,
+            }));
+            setAuditFallback(mapped);
+          } else {
+            setAuditFallback([]);
+          }
+        } catch (e) {
+          setAuditFallback([]);
+        }
+      } else {
+        setAuditFallback([]);
       }
     } catch (error) {
       console.error('Failed to fetch apply status:', error);
@@ -126,11 +153,11 @@ export function ApplyStatusDashboard() {
         </div>
       )}
 
-      {/* Applied Changes List */}
+      {/* Applied Changes List (with audit fallback) */}
       <div className="bg-card border border-border rounded-lg p-6">
         <h3 className="text-lg font-semibold mb-4">Applied Changes</h3>
         
-        {changes.length === 0 ? (
+        {(changes.length === 0 && auditFallback.length === 0) ? (
           <div className="text-center py-8 text-muted-foreground">
             <Zap className="w-12 h-12 mx-auto mb-4 text-gray-400" />
             <p>No changes have been applied yet.</p>
@@ -138,7 +165,7 @@ export function ApplyStatusDashboard() {
           </div>
         ) : (
           <div className="space-y-4">
-            {changes.map((change, index) => (
+            {(changes.length > 0 ? changes : auditFallback).map((change, index) => (
               <div
                 key={index}
                 className="border border-border rounded-lg p-4 hover:bg-accent/50 transition-colors"
@@ -165,7 +192,7 @@ export function ApplyStatusDashboard() {
                 <div className="mb-3">
                   <h4 className="font-medium text-sm mb-1">SQL Executed</h4>
                   <pre className="text-xs bg-muted p-2 rounded overflow-x-auto">
-                    {change.sql_executed}
+                    {change.sql_executed || '—'}
                   </pre>
                 </div>
                 
@@ -179,7 +206,7 @@ export function ApplyStatusDashboard() {
                 )}
                 
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span>Schema: {change.schema_name}</span>
+                  <span>Schema: {change.schema_name || 'sandbox'}</span>
                   {change.rollback_sql && (
                     <span className="text-green-600">• Rollback available</span>
                   )}
