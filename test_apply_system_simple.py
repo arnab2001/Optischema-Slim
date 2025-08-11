@@ -286,10 +286,8 @@ async def test_index_creation():
         return False
 
 if __name__ == "__main__":
-    # Set environment variables for testing
-    os.environ['GEMINI_API_KEY'] = 'AIzaSyCfY_KxPVsmlBAxmGakJ6B89g1h-jwf2cE'
-    os.environ['DEEPSEEK_API_KEY'] = 'sk-e4022e1036d140e7b5887aa3461f1878'
-    os.environ['LLM_PROVIDER'] = 'gemini'
+    # Ensure provider is set for local testing (keys should come from environment)
+    os.environ.setdefault('LLM_PROVIDER', 'gemini')
     
     success1 = asyncio.run(test_apply_system())
     success2 = asyncio.run(test_index_creation())

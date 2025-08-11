@@ -360,19 +360,19 @@ export default function IndexAdvisorTab() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white p-4 rounded-lg border border-gray-200">
             <div className="text-sm font-medium text-gray-600 mb-2">Total Recommendations</div>
-            <div className="text-2xl font-bold">{summary.total_recommendations}</div>
+            <div className="text-2xl font-bold">{summary?.total_recommendations || 0}</div>
           </div>
           <div className="bg-white p-4 rounded-lg border border-gray-200">
             <div className="text-sm font-medium text-gray-600 mb-2">Total Savings</div>
-            <div className="text-2xl font-bold text-green-600">{summary.total_potential_savings_mb?.toFixed(1) || '0.0'} MB</div>
+            <div className="text-2xl font-bold text-green-600">{summary?.total_potential_savings_mb?.toFixed(1) || '0.0'} MB</div>
           </div>
           <div className="bg-white p-4 rounded-lg border border-gray-200">
             <div className="text-sm font-medium text-gray-600 mb-2">Drop Recommendations</div>
-            <div className="text-2xl font-bold text-red-600">{summary.recommendations_by_type.drop || 0}</div>
+            <div className="text-2xl font-bold text-red-600">{summary?.recommendations_by_type?.drop || 0}</div>
           </div>
           <div className="bg-white p-4 rounded-lg border border-gray-200">
             <div className="text-sm font-medium text-gray-600 mb-2">Analyze Recommendations</div>
-            <div className="text-2xl font-bold text-yellow-600">{summary.recommendations_by_type.analyze || 0}</div>
+            <div className="text-2xl font-bold text-yellow-600">{summary?.recommendations_by_type?.analyze || 0}</div>
           </div>
         </div>
       )}
@@ -386,15 +386,15 @@ export default function IndexAdvisorTab() {
           <h3 className="text-lg font-semibold mb-4">Risk Breakdown</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="text-center">
-              <div className="text-2xl font-bold text-green-600">{summary.recommendations_by_risk.low || 0}</div>
+              <div className="text-2xl font-bold text-green-600">{summary?.recommendations_by_risk?.low || 0}</div>
               <div className="text-sm text-gray-600">Low Risk</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-yellow-600">{summary.recommendations_by_risk.medium || 0}</div>
+              <div className="text-2xl font-bold text-yellow-600">{summary?.recommendations_by_risk?.medium || 0}</div>
               <div className="text-sm text-gray-600">Medium Risk</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-red-600">{summary.recommendations_by_risk.high || 0}</div>
+              <div className="text-2xl font-bold text-red-600">{summary?.recommendations_by_risk?.high || 0}</div>
               <div className="text-sm text-gray-600">High Risk</div>
             </div>
           </div>
@@ -406,7 +406,7 @@ export default function IndexAdvisorTab() {
         <div className="bg-white p-6 rounded-lg border border-gray-200">
           <h3 className="text-lg font-semibold mb-4">Recent Activity</h3>
           <div className="text-center">
-            <div className="text-2xl font-bold text-blue-600">{summary.recent_recommendations_24h}</div>
+            <div className="text-2xl font-bold text-blue-600">{summary?.recent_recommendations_24h || 0}</div>
             <div className="text-sm text-gray-600">Recommendations in last 24h</div>
           </div>
         </div>

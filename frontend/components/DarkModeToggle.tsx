@@ -7,13 +7,17 @@ export default function DarkModeToggle() {
   const [isDark, setIsDark] = useState(false)
 
   useEffect(() => {
-    // Check for saved theme preference or default to light mode
+    // Initialize from saved preference, system preference, or current class
     const savedTheme = localStorage.getItem('theme')
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-    
-    if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
-      setIsDark(true)
+    const hasDarkClass = document.documentElement.classList.contains('dark')
+
+    const initialDark = savedTheme === 'dark' || (!savedTheme && (prefersDark || hasDarkClass))
+    setIsDark(initialDark)
+    if (initialDark) {
       document.documentElement.classList.add('dark')
+    } else {
+      document.documentElement.classList.remove('dark')
     }
   }, [])
 

@@ -247,33 +247,47 @@ export default function DatabaseSwitcher() {
       {/* Connection Status Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center space-x-2 px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-colors"
+        className="flex items-center gap-2 px-4 py-2.5 text-sm bg-white/80 backdrop-blur border border-gray-200 rounded-lg hover:bg-white hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200 shadow-sm"
       >
-        <Database className="w-4 h-4" />
-        <span className="font-medium">
-          {connectionStatus.connected 
-            ? `${connectionStatus.current_config?.host}:${connectionStatus.current_config?.port}/${connectionStatus.current_config?.database}`
-            : 'Not Connected'
-          }
-        </span>
+        <div className="flex items-center gap-2">
+          <Database className="w-4 h-4 text-gray-600" />
+          {connectionStatus.connected && connectionStatus.current_config ? (
+            <div className="text-left">
+              <div className="font-medium text-gray-900 truncate max-w-48">
+                {connectionStatus.current_config.host}
+              </div>
+              <div className="text-xs text-gray-500">
+                {connectionStatus.current_config.database}
+              </div>
+            </div>
+          ) : (
+            <span className="font-medium text-gray-600">Not Connected</span>
+          )}
+        </div>
+        
         {connectionStatus.connected && (
-          <div className="flex items-center space-x-1">
+          <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-gray-200">
             <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-            <span className="text-green-600 text-xs">Connected</span>
+            <span className="text-xs font-medium text-green-600">Connected</span>
           </div>
         )}
-        {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        
+        {isOpen ? (
+          <ChevronUp className="w-4 h-4 text-gray-400 ml-1" />
+        ) : (
+          <ChevronDown className="w-4 h-4 text-gray-400 ml-1" />
+        )}
       </button>
 
       {/* Dropdown Menu */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-96 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+        <div className="absolute right-0 mt-2 w-96 bg-white/95 backdrop-blur border border-gray-200 rounded-lg shadow-xl z-50">
           <div className="p-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900">Database Connection</h3>
               <button
                 onClick={() => setIsOpen(false)}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-gray-400 hover:text-gray-600 transition-colors"
               >
                 <XCircle className="w-5 h-5" />
               </button>
@@ -281,12 +295,12 @@ export default function DatabaseSwitcher() {
 
             {/* Current Connection Status */}
             {connectionStatus.connected && connectionStatus.current_config && (
-              <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+              <div className="mb-4 p-3 bg-green-50/80 border border-green-200 rounded-lg">
                 <div className="flex items-center space-x-2 mb-2">
                   <CheckCircle className="w-4 h-4 text-green-600" />
                   <span className="text-sm font-medium text-green-800">Currently Connected</span>
                 </div>
-                <div className="text-sm text-green-700">
+                <div className="text-sm text-green-700 space-y-1">
                   <div><strong>Host:</strong> {connectionStatus.current_config.host}:{connectionStatus.current_config.port}</div>
                   <div><strong>Database:</strong> {connectionStatus.current_config.database}</div>
                   <div><strong>User:</strong> {connectionStatus.current_config.user || connectionStatus.current_config.username}</div>
@@ -294,7 +308,7 @@ export default function DatabaseSwitcher() {
                 <button
                   onClick={disconnect}
                   disabled={loading}
-                  className="mt-2 flex items-center space-x-1 text-sm text-red-600 hover:text-red-800 disabled:opacity-50"
+                  className="mt-3 flex items-center space-x-1 text-sm text-red-600 hover:text-red-800 disabled:opacity-50 transition-colors"
                 >
                   <LogOut className="w-3 h-3" />
                   <span>Disconnect</span>
@@ -508,36 +522,36 @@ export default function DatabaseSwitcher() {
 
               {/* Test Result */}
               {testResult && (
-                <div className={`p-3 rounded-lg border-2 ${
+                <div className={`p-4 rounded-lg border-2 ${
                   testResult.success 
                     ? 'bg-green-50 border-green-300 text-green-800' 
                     : 'bg-red-50 border-red-300 text-red-800'
                 }`}>
-                  <div className="flex items-center space-x-2 mb-2">
+                  <div className="flex items-center space-x-2 mb-3">
                     {testResult.success ? (
-                      <CheckCircle className="w-5 h-5" />
+                      <CheckCircle className="w-5 h-5 text-green-600" />
                     ) : (
-                      <XCircle className="w-5 h-5" />
+                      <XCircle className="w-5 h-5 text-red-600" />
                     )}
-                    <span className="font-medium">{testResult.success ? 'Connection Test Successful!' : 'Connection Test Failed'}</span>
+                    <span className="font-semibold text-lg">{testResult.success ? 'Connection Test Successful!' : 'Connection Test Failed'}</span>
                   </div>
-                  <div className="text-sm mb-2">{testResult.message}</div>
+                  <div className="text-sm mb-3 bg-white/50 p-3 rounded border">{testResult.message}</div>
                   {testResult.details && (
-                    <div className="text-xs opacity-75 space-y-1">
-                      {testResult.details.version && <div>Version: {testResult.details.version}</div>}
+                    <div className="text-xs opacity-75 space-y-1 bg-white/30 p-2 rounded">
+                      {testResult.details.version && <div><strong>Version:</strong> {testResult.details.version}</div>}
                       {testResult.details.pg_stat_statements_enabled !== undefined && (
-                        <div>pg_stat_statements: {testResult.details.pg_stat_statements_enabled ? 'Enabled' : 'Disabled'}</div>
+                        <div><strong>pg_stat_statements:</strong> {testResult.details.pg_stat_statements_enabled ? 'Enabled' : 'Disabled'}</div>
                       )}
                     </div>
                   )}
                   {testResult.success && (
-                    <div className="mt-3 p-2 bg-green-100 rounded border border-green-200">
+                    <div className="mt-3 p-3 bg-green-100 rounded border border-green-200">
                       <div className="flex items-center space-x-2 text-green-700">
                         <Database className="w-4 h-4" />
                         <span className="text-sm font-medium">Ready to Connect!</span>
                       </div>
                       <div className="text-xs text-green-600 mt-1">
-                        Click the "Connect" button below to switch to this database.
+                        Click the &quot;Connect&quot; button below to switch to this database.
                       </div>
                     </div>
                   )}
@@ -549,7 +563,11 @@ export default function DatabaseSwitcher() {
                 <button
                   onClick={testConnection}
                   disabled={testing}
-                  className="flex-1 flex items-center justify-center space-x-1 px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
+                  className={`flex-1 flex items-center justify-center space-x-1 px-3 py-2 text-sm rounded transition-all duration-200 ${
+                    testing 
+                      ? 'bg-gray-200 text-gray-500 cursor-not-allowed' 
+                      : 'bg-blue-100 text-blue-700 hover:bg-blue-200 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2'
+                  }`}
                 >
                   {testing ? (
                     <Loader className="w-4 h-4 animate-spin" />
@@ -562,11 +580,11 @@ export default function DatabaseSwitcher() {
                 <button
                   onClick={switchConnection}
                   disabled={loading || !testResult?.success}
-                  className={`flex-1 flex items-center justify-center space-x-1 px-3 py-2 text-sm rounded transition-colors ${
+                  className={`flex-1 flex items-center justify-center space-x-1 px-3 py-2 text-sm rounded transition-all duration-200 ${
                     testResult?.success 
-                      ? 'bg-blue-600 text-white hover:bg-blue-700' 
-                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  } disabled:opacity-50`}
+                      ? 'bg-green-600 text-white hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2' 
+                      : 'bg-gray-200 text-gray-500 cursor-not-allowed border border-gray-300'
+                  }`}
                   title={!testResult?.success ? 'Test connection first' : 'Connect to this database'}
                 >
                   {loading ? (
@@ -580,11 +598,11 @@ export default function DatabaseSwitcher() {
               
               {/* Connection Status */}
               {testResult && (
-                <div className="text-xs text-gray-600 mt-2">
+                <div className="text-xs text-gray-600 mt-3 p-3 bg-gray-50 rounded border">
                   {testResult.success ? (
                     <div className="flex items-center space-x-1 text-green-600">
                       <CheckCircle className="w-3 h-3" />
-                      <span>Connection test successful! Click "Connect" to switch to this database.</span>
+                      <span>Connection test successful! Click &quot;Connect&quot; to switch to this database.</span>
                     </div>
                   ) : (
                     <div className="flex items-center space-x-1 text-red-600">

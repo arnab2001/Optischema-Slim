@@ -417,7 +417,7 @@ export function RecommendationCard({
               </div>
               <div className="text-xs text-gray-500">
                 Advisory recommendations require manual implementation and monitoring.
-                Use the "Manual Query" option in benchmark to test your own implementation.
+                Use the &quot;Manual Query&quot; option in benchmark to test your own implementation.
               </div>
             </div>
           ) : (

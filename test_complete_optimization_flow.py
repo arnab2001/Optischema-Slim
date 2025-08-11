@@ -247,10 +247,8 @@ async def test_complete_optimization_flow():
     return True
 
 if __name__ == "__main__":
-    # Set environment variables for testing
-    os.environ['GEMINI_API_KEY'] = 'AIzaSyCfY_KxPVsmlBAxmGakJ6B89g1h-jwf2cE'
-    os.environ['DEEPSEEK_API_KEY'] = 'sk-e4022e1036d140e7b5887aa3461f1878'
-    os.environ['LLM_PROVIDER'] = 'gemini'
+    # Ensure provider is set for local testing (keys should come from environment)
+    os.environ.setdefault('LLM_PROVIDER', 'gemini')
     
     success = asyncio.run(test_complete_optimization_flow())
     

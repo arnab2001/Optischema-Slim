@@ -26,11 +26,6 @@ async def generate_real_ai_recommendations():
     print()
     
     try:
-        # Set API keys for AI generation
-        os.environ['GEMINI_API_KEY'] = 'AIzaSyCfY_KxPVsmlBAxmGakJ6B89g1h-jwf2cE'
-        os.environ['DEEPSEEK_API_KEY'] = 'sk-e4022e1036d140e7b5887aa3461f1878'
-        os.environ['LLM_PROVIDER'] = 'gemini'
-        
         print("🔗 Running analysis pipeline...")
         
         # Run the actual analysis pipeline

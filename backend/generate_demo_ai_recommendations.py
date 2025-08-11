@@ -153,10 +153,9 @@ async def analyze_with_ai(query_metrics):
     
     print("🤖 Analyzing queries with AI to generate recommendations...")
     
-    # Set API keys
-    os.environ['GEMINI_API_KEY'] = 'AIzaSyCfY_KxPVsmlBAxmGakJ6B89g1h-jwf2cE'
-    os.environ['DEEPSEEK_API_KEY'] = 'sk-e4022e1036d140e7b5887aa3461f1878'
-    os.environ['LLM_PROVIDER'] = 'gemini'
+    # Expect API keys from environment; select provider if configured
+    if not os.getenv('LLM_PROVIDER'):
+        os.environ['LLM_PROVIDER'] = 'gemini'
     
     recommendations = []
     

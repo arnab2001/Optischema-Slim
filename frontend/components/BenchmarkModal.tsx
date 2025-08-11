@@ -153,7 +153,7 @@ export function BenchmarkModal({
                 <div>
                   <p className="text-sm font-medium text-yellow-800">Advisory Recommendation</p>
                   <p className="text-xs text-yellow-700 mt-1">
-                    This recommendation provides guidance but doesn't include executable SQL. Please enter a custom query to test performance.
+                    This recommendation provides guidance but doesn&apos;t include executable SQL. Please enter a custom query to test performance.
                   </p>
                 </div>
               </div>

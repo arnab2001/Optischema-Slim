@@ -521,7 +521,7 @@ export default function Dashboard() {
           <h2 className="text-2xl font-bold mb-2">Not connected to a database</h2>
           <p className="text-muted-foreground mb-4">Connect to your PostgreSQL instance to begin monitoring and optimization.</p>
           <button
-            className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            className="px-6 py-2 bg-blue-600 text-black rounded-md hover:bg-blue-700 transition-colors"
             onClick={() => setShowConnectionWizard(true)}
           >
             Connect to Database
@@ -551,32 +551,46 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b border-border bg-card">
+      <header className="sticky top-0 z-40 border-b border-border bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/60 shadow-sm">
         <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-foreground">OptiSchema</h1>
-              <p className="text-muted-foreground">AI-Powered PostgreSQL Optimization</p>
+          {/* Top row - Logo and main actions */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-16 flex items-center justify-center overflow-hidden">
+                <img src="/logo_Opti.png" alt="OptiSchema" className="h-12 w-16 object-contain" />
+              </div>
+              <div className="text-xl font-semibold text-foreground">OptiSchema</div>
             </div>
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center gap-3">
+              <DarkModeToggle />
+            </div>
+          </div>
+          
+          {/* Bottom row - Connection and status info */}
+          <div className="flex items-center justify-between">
+            {/* Left side - Connection info */}
+            <div className="flex items-center gap-4">
               <DatabaseSwitcher />
+            </div>
+            
+            {/* Right side - Status indicators */}
+            <div className="flex items-center gap-4">
               <LiveIndicator isLive={true} lastUpdate={lastUpdate} />
               <SystemStatus />
-              <DarkModeToggle />
             </div>
           </div>
         </div>
       </header>
 
       {/* Welcome Banner */}
-      <div className="container mx-auto px-4 py-4">
+      <div className="container mx-auto px-4 py-6">
         <WelcomeBanner />
       </div>
 
       {/* Navigation Tabs */}
-      <div className="border-b border-border bg-card">
+      <div className="border-b border-border bg-card/50 backdrop-blur">
         <div className="container mx-auto px-4">
-          <nav className="flex space-x-8 overflow-x-auto">
+          <nav className="flex space-x-1 overflow-x-auto">
             {[
               { id: 'overview', label: 'Overview', icon: '📊' },
               // { id: 'queries', label: 'Query Analysis', icon: '🔍' },
@@ -590,10 +604,10 @@ export default function Dashboard() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors whitespace-nowrap ${
+                className={`py-3 px-4 border-b-2 font-medium text-sm transition-all duration-200 whitespace-nowrap rounded-t-lg ${
                   activeTab === tab.id
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                    ? 'border-primary text-primary bg-primary/5'
+                    : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30'
                 }`}
               >
                 <span className="mr-2">{tab.icon}</span>

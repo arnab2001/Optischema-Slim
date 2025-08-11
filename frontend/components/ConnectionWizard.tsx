@@ -313,7 +313,7 @@ export default function ConnectionWizard({ isOpen, onClose, onConnect, currentCo
               className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
             >
               <Database className="w-4 h-4" />
-              <span>Connect to Database</span>
+              <span className='text-black'>Connect to Database</span>
             </button>
           </div>
         </div>
