@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { DownloadIcon, FilterIcon, RefreshCwIcon } from 'lucide-react';
+import { DownloadIcon, FilterIcon, RefreshCwIcon, EyeIcon, XIcon } from 'lucide-react';
 
 interface AuditLog {
   id: string;
@@ -51,6 +51,7 @@ export default function AuditTab() {
   });
   const [actionTypes, setActionTypes] = useState<string[]>([]);
   const [users, setUsers] = useState<string[]>([]);
+  const [compareLog, setCompareLog] = useState<AuditLog | null>(null);
 
   const fetchAuditLogs = async () => {
     try {
@@ -303,8 +304,8 @@ export default function AuditTab() {
                     <th className="text-left py-3 px-4 font-medium text-gray-700">Risk Level</th>
                     <th className="text-left py-3 px-4 font-medium text-gray-700">Status</th>
                     <th className="text-left py-3 px-4 font-medium text-gray-700">Improvement</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">Before Metrics</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">After Metrics</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-700">Query</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-700">Compare</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -337,11 +338,19 @@ export default function AuditTab() {
                           </span>
                         ) : 'N/A'}
                       </td>
-                      <td className="py-3 px-4 max-w-xs truncate" title={formatMetrics(log.before_metrics)}>
-                        {formatMetrics(log.before_metrics)}
+                      <td className="py-3 px-4 max-w-md truncate" title={(log.details && (log.details.sql_executed || log.details.original_sql)) || ''}>
+                        <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">
+                          {(log.details && (log.details.sql_executed || log.details.original_sql)) || '—'}
+                        </code>
                       </td>
-                      <td className="py-3 px-4 max-w-xs truncate" title={formatMetrics(log.after_metrics)}>
-                        {formatMetrics(log.after_metrics)}
+                      <td className="py-3 px-4">
+                        <button
+                          className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-1"
+                          onClick={() => setCompareLog(log)}
+                        >
+                          <EyeIcon className="w-3 h-3" />
+                          View
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -357,6 +366,53 @@ export default function AuditTab() {
           )}
         </div>
       </div>
+
+      {/* Compare Modal */}
+      {compareLog && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setCompareLog(null)}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b">
+              <h4 className="text-lg font-semibold">Before vs After</h4>
+              <button className="text-gray-600 hover:text-gray-900" onClick={() => setCompareLog(null)}>
+                <XIcon className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              <div>
+                <div className="text-sm text-gray-600 mb-1">Recommendation ID</div>
+                <div className="font-mono text-sm">{compareLog.recommendation_id || 'N/A'}</div>
+              </div>
+              <div>
+                <div className="text-sm text-gray-600 mb-1">SQL</div>
+                <pre className="text-xs bg-gray-100 p-2 rounded overflow-x-auto">
+{((compareLog.details && (compareLog.details.sql_executed || compareLog.details.original_sql)) || '—')}
+                </pre>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="border rounded p-3">
+                  <div className="text-sm font-medium mb-2">Before</div>
+                  <div className="text-xs text-gray-700 whitespace-pre-wrap">
+                    {formatMetrics(compareLog.before_metrics)}
+                  </div>
+                </div>
+                <div className="border rounded p-3">
+                  <div className="text-sm font-medium mb-2">After</div>
+                  <div className="text-xs text-gray-700 whitespace-pre-wrap">
+                    {formatMetrics(compareLog.after_metrics)}
+                  </div>
+                </div>
+              </div>
+              {typeof compareLog.improvement_percent === 'number' && (
+                <div className="text-sm">
+                  Improvement: <span className={compareLog.improvement_percent > 0 ? 'text-green-600' : 'text-red-600'}>
+                    {compareLog.improvement_percent > 0 ? '+' : ''}{compareLog.improvement_percent.toFixed(1)}%
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 

@@ -72,6 +72,8 @@ export function ApplyStatusDashboard() {
     switch (status) {
       case 'applied':
         return <CheckCircle className="w-4 h-4 text-green-600" />;
+      case 'completed':
+        return <CheckCircle className="w-4 h-4 text-green-600" />;
       case 'rolled_back':
         return <RotateCcw className="w-4 h-4 text-orange-600" />;
       case 'running':
@@ -87,6 +89,8 @@ export function ApplyStatusDashboard() {
     switch (status) {
       case 'applied':
         return 'bg-green-100 text-green-800';
+      case 'completed':
+        return 'bg-green-100 text-green-800';
       case 'rolled_back':
         return 'bg-orange-100 text-orange-800';
       case 'running':
@@ -95,6 +99,33 @@ export function ApplyStatusDashboard() {
         return 'bg-red-100 text-red-800';
       default:
         return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const handleRollback = async (change: any) => {
+    if (!change?.recommendation_id) return;
+    const id = change.recommendation_id;
+    try {
+      // Try ApplyManager rollback first
+      let res = await fetch(`/api/apply/${id}/rollback`, { method: 'POST' });
+      if (!res.ok) {
+        // Fallback to apply-and-test rollback
+        res = await fetch('/api/suggestions/rollback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recommendation_id: id })
+        });
+      }
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && (data.success !== false)) {
+        fetchStatus();
+      } else {
+        console.error('Rollback failed:', data);
+        alert(data?.message || data?.detail || 'Rollback failed');
+      }
+    } catch (e) {
+      console.error('Rollback error:', e);
+      alert('Rollback failed due to a network or server error.');
     }
   };
 
@@ -209,6 +240,29 @@ export function ApplyStatusDashboard() {
                   <span>Schema: {change.schema_name || 'sandbox'}</span>
                   {change.rollback_sql && (
                     <span className="text-green-600">• Rollback available</span>
+                  )}
+                </div>
+
+                <div className="mt-3 flex gap-2">
+                  {(change.status === 'applied' || change.status === 'completed') && change.recommendation_id && (
+                    <button
+                      onClick={() => handleRollback(change)}
+                      className="px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+                    >
+                      Rollback
+                    </button>
+                  )}
+                  {/* Compare modal trigger placeholder */}
+                  {change.recommendation_id && (
+                    <button
+                      onClick={() => {
+                        // Navigate to audit with filter to compare before vs after for this recommendation
+                        window.location.hash = `#audit-${change.recommendation_id}`;
+                      }}
+                      className="px-3 py-1 text-xs bg-gray-100 text-gray-800 rounded hover:bg-gray-200"
+                    >
+                      Compare Before/After
+                    </button>
                   )}
                 </div>
               </div>

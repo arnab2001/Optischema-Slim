@@ -247,7 +247,8 @@ class ApplyManager:
                         'schema_name': schema_name,
                         'rollback_sql': change_record['rollback_sql'],
                         'recommendation_title': recommendation.get('title', ''),
-                        'risk_level': recommendation.get('risk_level', 'unknown')
+                        'risk_level': recommendation.get('risk_level', 'unknown'),
+                        'original_sql': recommendation.get('sql_fix') or recommendation.get('original_sql') or recommendation.get('query_text') or ''
                     }
                 )
                 

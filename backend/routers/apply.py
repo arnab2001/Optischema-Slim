@@ -3,6 +3,7 @@ from typing import Dict, Any, List
 import logging
 
 from apply_manager import get_apply_manager
+from audit import AuditService
 from recommendations_db import RecommendationsDB
 
 logger = logging.getLogger(__name__)
@@ -123,6 +124,35 @@ async def get_applied_changes() -> Dict[str, Any]:
         apply_manager = get_apply_manager()
         changes = await apply_manager.get_applied_changes()
         
+        # Fallback: pull from audit logs if in-memory tracker is empty
+        if not changes:
+            logs = AuditService.get_audit_logs(action_type="recommendation_applied", limit=100)
+            # Deduplicate by recommendation_id (keep latest)
+            latest_by_id = {}
+            for log in logs:
+                rec_id = log.get("recommendation_id")
+                if not rec_id:
+                    continue
+                if rec_id not in latest_by_id:
+                    latest_by_id[rec_id] = log
+                    continue
+                if log.get("created_at", "") > latest_by_id[rec_id].get("created_at", ""):
+                    latest_by_id[rec_id] = log
+            mapped = []
+            for log in latest_by_id.values():
+                details = log.get("details", {}) or {}
+                mapped.append({
+                    "recommendation_id": log.get("recommendation_id"),
+                    # Normalize audit status to apply-manager categories
+                    "status": "applied" if (log.get("status") in (None, "", "completed")) else log.get("status"),
+                    "applied_at": log.get("created_at"),
+                    "sql_executed": log.get("sql_executed") or details.get("sql_executed") or details.get("ddl_executed") or "",
+                    "schema_name": details.get("schema_name", "sandbox"),
+                    "rollback_sql": details.get("rollback_sql"),
+                    "rolled_back_at": None,
+                })
+            changes = mapped
+        
         return {
             "success": True,
             "data": {
@@ -177,6 +207,16 @@ async def get_apply_manager_status() -> Dict[str, Any]:
     try:
         apply_manager = get_apply_manager()
         changes = await apply_manager.get_applied_changes()
+        
+        if not changes:
+            # Fallback to audit logs to compute counts
+            logs = AuditService.get_audit_logs(action_type="recommendation_applied", limit=100)
+            # Map to change-like objects
+            changes = [{
+                "status": "applied" if (log.get("status") in (None, "", "completed")) else log.get("status"),
+                "recommendation_id": log.get("recommendation_id"),
+                "applied_at": log.get("created_at"),
+            } for log in logs if log.get("recommendation_id")]
         
         # Count changes by status
         status_counts = {}

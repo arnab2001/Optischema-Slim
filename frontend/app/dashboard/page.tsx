@@ -521,7 +521,7 @@ export default function Dashboard() {
           <h2 className="text-2xl font-bold mb-2">Not connected to a database</h2>
           <p className="text-muted-foreground mb-4">Connect to your PostgreSQL instance to begin monitoring and optimization.</p>
           <button
-            className="px-6 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors"
+            className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
             onClick={() => setShowConnectionWizard(true)}
           >
             Connect to Database
@@ -579,7 +579,7 @@ export default function Dashboard() {
           <nav className="flex space-x-8 overflow-x-auto">
             {[
               { id: 'overview', label: 'Overview', icon: '📊' },
-              { id: 'queries', label: 'Query Analysis', icon: '🔍' },
+              // { id: 'queries', label: 'Query Analysis', icon: '🔍' },
               { id: 'suggestions', label: 'Optimizations', icon: '⚡' },
               { id: 'analytics', label: 'Analytics', icon: '📈' },
               { id: 'audit', label: 'Audit Log', icon: '📋' },
@@ -605,7 +605,7 @@ export default function Dashboard() {
       </div>
 
       {/* Main Content */}
-      <main className="px-4 py-6">
+      <main className="container mx-auto px-4 py-6">
         {activeTab === 'overview' && (
           <div className="space-y-6">
             {/* KPI Banner */}

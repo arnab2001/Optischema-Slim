@@ -163,6 +163,44 @@ async def disconnect_database():
         "message": "Disconnected from database"
     }
 
+
+@router.get("/ping")
+async def ping_current_database() -> Dict[str, Any]:
+    """Measure a lightweight round-trip to the current database using SELECT 1."""
+    try:
+        pool = await get_pool()
+        if not pool:
+            return {"success": False, "error": "No active database connection"}
+        start = asyncio.get_event_loop().time()
+        async with pool.acquire() as conn:
+            await conn.fetchval("SELECT 1")
+        end = asyncio.get_event_loop().time()
+        duration_ms = (end - start) * 1000.0
+        return {"success": True, "duration_ms": round(duration_ms, 2), "timestamp": datetime.utcnow().isoformat()}
+    except Exception as e:
+        logger.error(f"Ping failed: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@router.get("/sandbox-ping")
+async def ping_sandbox_database() -> Dict[str, Any]:
+    """Measure a lightweight round-trip to the sandbox database using SELECT 1."""
+    try:
+        from sandbox import get_sandbox_connection
+        conn = await get_sandbox_connection()
+        start = asyncio.get_event_loop().time()
+        await conn.fetchval("SELECT 1")
+        end = asyncio.get_event_loop().time()
+        try:
+            await conn.close()
+        except Exception:
+            pass
+        duration_ms = (end - start) * 1000.0
+        return {"success": True, "duration_ms": round(duration_ms, 2), "timestamp": datetime.utcnow().isoformat()}
+    except Exception as e:
+        logger.error(f"Sandbox ping failed: {e}")
+        return {"success": False, "error": str(e)}
+
 @router.post("/clear-history")
 async def clear_connection_history():
     """Clear the connection history."""

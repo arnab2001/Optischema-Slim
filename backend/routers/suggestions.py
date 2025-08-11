@@ -347,6 +347,8 @@ async def apply_and_test_suggestion(request: Dict[str, Any]) -> Dict[str, Any]:
             # Log to audit trail
             try:
                 from audit import AuditService
+                # Provide a meaningful SQL for audit even when no DDL executed
+                original_sql = recommendation.get("sql_fix") or recommendation.get("original_sql") or recommendation.get("query_text") or ""
                 AuditService.log_action(
                     action_type="recommendation_applied",
                     recommendation_id=recommendation_id,
@@ -356,6 +358,7 @@ async def apply_and_test_suggestion(request: Dict[str, Any]) -> Dict[str, Any]:
                     details={
                         "method": "apply_and_test",
                         "sql_executed": apply_result.get("ddl_executed", ""),
+                        "original_sql": original_sql,
                         "environment": "sandbox",
                         "tables_sampled": [t['name'] for t in tables_sampled] if tables_sampled else [],
                         "baseline_time_ms": improvement.get("baseline_time_ms"),
@@ -382,7 +385,7 @@ async def apply_and_test_suggestion(request: Dict[str, Any]) -> Dict[str, Any]:
             "rollback_available": apply_result.get("rollback_available", False),
             "tables_sampled": tables_sampled or tables_to_sample
         }
-        
+    
     except Exception as e:
         import logging
         logger = logging.getLogger(__name__)
@@ -391,13 +394,14 @@ async def apply_and_test_suggestion(request: Dict[str, Any]) -> Dict[str, Any]:
         # Log failed attempt to audit trail
         try:
             from audit import AuditService
+            original_sql = recommendation.get("sql_fix") or recommendation.get("original_sql") or recommendation.get("query_text") or ""
             AuditService.log_action(
                 action_type="recommendation_apply_failed",
                 recommendation_id=recommendation_id,
                 details={
                     "method": "apply_and_test",
                     "error_message": str(e),
-                    "sql_attempted": recommendation.get("sql_fix", ""),
+                    "sql_attempted": original_sql,
                     "environment": "sandbox"
                 },
                 risk_level=recommendation.get("risk_level", "unknown"),
