@@ -128,16 +128,26 @@ class ConnectionBaselineService:
             WHERE connection_id = ?
         ''', (connection_id,))
         
-        # Insert new baseline
-        cursor.execute('''
-            INSERT INTO connection_baselines (
-                id, connection_id, connection_name, baseline_latency_ms,
-                measured_at, connection_config, is_active
-            ) VALUES (?, ?, ?, ?, ?, ?, 1)
-        ''', (
-            baseline_id, connection_id, connection_name, baseline_latency_ms,
-            measured_at, json.dumps(connection_config)
-        ))
+        # Insert new baseline; if unique conflict on connection_id, update existing row
+        try:
+            cursor.execute('''
+                INSERT INTO connection_baselines (
+                    id, connection_id, connection_name, baseline_latency_ms,
+                    measured_at, connection_config, is_active
+                ) VALUES (?, ?, ?, ?, ?, ?, 1)
+            ''', (
+                baseline_id, connection_id, connection_name, baseline_latency_ms,
+                measured_at, json.dumps(connection_config)
+            ))
+        except sqlite3.IntegrityError:
+            # Update existing active row
+            cursor.execute('''
+                UPDATE connection_baselines 
+                SET connection_name = ?, baseline_latency_ms = ?, measured_at = ?, connection_config = ?, is_active = 1
+                WHERE connection_id = ?
+            ''', (
+                connection_name, baseline_latency_ms, measured_at, json.dumps(connection_config), connection_id
+            ))
         
         conn.commit()
         conn.close()

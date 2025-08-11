@@ -235,9 +235,9 @@ export default function ConnectionBaselineTab() {
           <button 
             onClick={async () => {
               try {
-                const res = await fetch('/api/connection/status');
+                const res = await fetch('/api/connection/ping');
                 const data = await res.json();
-                alert(data?.connected ? 'Current DB reachable' : 'No active DB connection');
+                if (data.success) alert(`Current DB: ${data.duration_ms} ms`); else alert('No active DB connection');
               } catch {
                 alert('Current DB not reachable');
               }
@@ -249,8 +249,9 @@ export default function ConnectionBaselineTab() {
           <button 
             onClick={async () => {
               try {
-                const res = await fetch('/api/index-advisor/analyze/sandbox', { method: 'POST' });
-                alert(res.ok ? 'Sandbox DB reachable' : 'Sandbox DB not reachable');
+                const res = await fetch('/api/connection/sandbox-ping');
+                const data = await res.json();
+                if (data.success) alert(`Sandbox DB: ${data.duration_ms} ms`); else alert('Sandbox DB not reachable');
               } catch {
                 alert('Sandbox DB not reachable');
               }
