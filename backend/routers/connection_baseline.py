@@ -3,7 +3,7 @@ Connection baseline router for OptiSchema backend.
 Provides endpoints for measuring and managing connection latency baselines.
 """
 
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, HTTPException, Body, Header
 from typing import Dict, Any, Optional
 from connection_baseline import ConnectionBaselineService
 
@@ -12,12 +12,15 @@ router = APIRouter()
 @router.post("/connection-baseline/measure")
 async def measure_connection_latency(
     connection_config: Dict[str, Any] = Body(..., description="Database connection configuration"),
-    connection_name: str = Body(..., description="Human-readable connection name")
+    connection_name: str = Body(..., description="Human-readable connection name"),
+    tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")
 ) -> Dict[str, Any]:
     """Measure connection latency and store baseline"""
     try:
         result = await ConnectionBaselineService.measure_and_store_baseline(
-            connection_config, connection_name
+            connection_config,
+            connection_name,
+            tenant_id=tenant_id,
         )
         if result["success"]:
             return {
@@ -42,19 +45,19 @@ async def measure_connection_latency(
         }
 
 @router.get("/connection-baseline/baselines")
-async def get_all_baselines():
+async def get_all_baselines(tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
     """Get all active connection baselines"""
     try:
-        baselines = ConnectionBaselineService.get_all_baselines()
+        baselines = await ConnectionBaselineService.get_all_baselines(tenant_id=tenant_id)
         return {"success": True, "data": baselines, "count": len(baselines)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get baselines: {str(e)}")
 
 @router.get("/connection-baseline/baseline/{connection_id}")
-async def get_baseline(connection_id: str):
+async def get_baseline(connection_id: str, tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
     """Get specific connection baseline"""
     try:
-        baseline = ConnectionBaselineService.get_baseline(connection_id)
+        baseline = await ConnectionBaselineService.get_baseline(connection_id, tenant_id=tenant_id)
         if baseline:
             return {"success": True, "data": baseline}
         else:
@@ -67,11 +70,16 @@ async def get_baseline(connection_id: str):
 @router.post("/connection-baseline/update")
 async def update_baseline(
     connection_id: str = Body(..., description="Connection ID"),
-    baseline_latency_ms: float = Body(..., description="New baseline latency in milliseconds")
+    baseline_latency_ms: float = Body(..., description="New baseline latency in milliseconds"),
+    tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")
 ):
     """Update an existing connection baseline"""
     try:
-        success = ConnectionBaselineService.update_baseline(connection_id, baseline_latency_ms)
+        success = await ConnectionBaselineService.update_baseline(
+            connection_id,
+            baseline_latency_ms,
+            tenant_id=tenant_id,
+        )
         if success:
             return {
                 "success": True,
@@ -86,10 +94,10 @@ async def update_baseline(
         raise HTTPException(status_code=500, detail=f"Failed to update baseline: {str(e)}")
 
 @router.delete("/connection-baseline/baseline/{connection_id}")
-async def deactivate_baseline(connection_id: str):
+async def deactivate_baseline(connection_id: str, tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
     """Deactivate a connection baseline"""
     try:
-        success = ConnectionBaselineService.deactivate_baseline(connection_id)
+        success = await ConnectionBaselineService.deactivate_baseline(connection_id, tenant_id=tenant_id)
         if success:
             return {
                 "success": True,
@@ -103,10 +111,10 @@ async def deactivate_baseline(connection_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to deactivate baseline: {str(e)}")
 
 @router.get("/connection-baseline/summary")
-async def get_baseline_summary():
+async def get_baseline_summary(tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
     """Get connection baseline summary statistics"""
     try:
-        summary = ConnectionBaselineService.get_baseline_summary()
+        summary = await ConnectionBaselineService.get_baseline_summary(tenant_id=tenant_id)
         return {"success": True, "data": summary}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get baseline summary: {str(e)}") 

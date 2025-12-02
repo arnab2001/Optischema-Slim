@@ -134,6 +134,16 @@ npm run dev
 - Whitelisted DDL only (… CONCURRENTLY, IF (NOT) EXISTS)
 - PII-safe mode and cache controls available
 
+### Challenges faced
+Building reliable, safe, and actionable database optimization surfaced a few recurring challenges:
+- Signal vs noise in metrics: pg_stat_statements can include system/one-off queries; we fingerprint/dedupe and filter aggressively.
+- Plan parsing fidelity: EXPLAIN JSON fields vary by PostgreSQL versions; we normalize and guard for missing values.
+- Safe DDL at scale: CREATE INDEX can lock tables; we enforce CONCURRENTLY and idempotent IF (NOT) EXISTS, plus rollback SQL.
+- Honest benchmarks: warm caches, cross‑AZ RTT, and variance can skew results; we standardize runs and report Δ latency/buffers.
+- Data privacy: prompts and outputs must avoid sensitive payloads; we support PII‑safe mode and controllable caching.
+- LLM determinism/cost: responses are cached with strict schemas and fallbacks to heuristics for resilience and cost control.
+- Replica/sandbox drift: tag data sources (Sampled/Replica) and surface caveats when schemas or statistics diverge.
+
 ### Troubleshooting
 - If frontend can’t reach API, ensure `optischema-api` is healthy and `NEXT_PUBLIC_API_URL` points to it
 - If no queries appear, verify pg_stat_statements enabled in your DB

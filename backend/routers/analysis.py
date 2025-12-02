@@ -189,7 +189,7 @@ def detect_bottleneck_type(execution_plan: Optional[Dict[str, Any]], query_text:
 @router.get("/latest")
 async def get_latest_analysis() -> Dict[str, Any]:
     """Return the latest analysis results."""
-    analysis_results = get_analysis_cache()
+    analysis_results = await get_analysis_cache()
     if not analysis_results:
         raise HTTPException(status_code=404, detail="No analysis results available")
     return analysis_results
@@ -311,16 +311,28 @@ async def analyze_query(request: QueryAnalysisRequest) -> QueryAnalysisResponse:
 @router.get("/status")
 async def get_analysis_status() -> Dict[str, Any]:
     """Get the current analysis status."""
-    analysis_results = get_analysis_cache()
+    analysis_results = await get_analysis_cache()
     
-    return {
-        "last_analysis": analysis_results.get("timestamp") if analysis_results else None,
-        "total_queries_analyzed": analysis_results.get("total_queries_analyzed", 0) if analysis_results else 0,
-        "hot_queries_found": len(analysis_results.get("hot_queries", [])) if analysis_results else 0,
-        "recommendations_generated": len(analysis_results.get("recommendations", [])) if analysis_results else 0,
-        "analysis_running": False,  # TODO: Implement analysis status tracking
-        "next_scheduled": None  # TODO: Implement scheduling status
-    }
+    # analysis_results is now a list of analysis dictionaries
+    if analysis_results:
+        latest = analysis_results[0] if analysis_results else {}
+        return {
+            "last_analysis": latest.get("created_at") if latest else None,
+            "total_queries_analyzed": len(analysis_results),
+            "hot_queries_found": len(analysis_results),
+            "recommendations_generated": 0,  # Will be fetched separately if needed
+            "analysis_running": False,  # TODO: Implement analysis status tracking
+            "next_scheduled": None  # TODO: Implement scheduling status
+        }
+    else:
+        return {
+            "last_analysis": None,
+            "total_queries_analyzed": 0,
+            "hot_queries_found": 0,
+            "recommendations_generated": 0,
+            "analysis_running": False,
+            "next_scheduled": None
+        }
 
 
 @router.get("/history")

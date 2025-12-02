@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { mergeTenantHeaders, resolveTenantIdFromRequest } from '@/lib/tenant';
 
 export async function POST(request: NextRequest) {
   try {
@@ -6,11 +7,12 @@ export async function POST(request: NextRequest) {
     console.log('Apply-and-test request:', body);
     
     // Forward the request to the backend - use Docker service name
+    const tenantId = resolveTenantIdFromRequest(request);
     const backendResponse = await fetch('http://optischema-api:8000/suggestions/apply-and-test', {
       method: 'POST',
-      headers: {
+      headers: mergeTenantHeaders(tenantId, {
         'Content-Type': 'application/json',
-      },
+      }),
       body: JSON.stringify(body),
     });
 

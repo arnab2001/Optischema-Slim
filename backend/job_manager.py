@@ -5,20 +5,20 @@ Handles benchmark job processing and lifecycle management.
 
 import asyncio
 import logging
-import uuid
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 from concurrent.futures import ThreadPoolExecutor
 
-from benchmark_jobs import BenchmarkJobsDB
-from recommendations_db import RecommendationsDB
+from benchmark_jobs_service import BenchmarkJobsService
+from recommendations_service import RecommendationsService
+from tenant_context import TenantContext
 
 logger = logging.getLogger(__name__)
 
 # Global job queue and executor
 job_queue = asyncio.Queue()
 job_executor = ThreadPoolExecutor(max_workers=3)  # Limit concurrent jobs
-active_jobs = {}  # Track active job tasks
+active_jobs: Dict[str, Dict[str, Any]] = {}  # Track active job tasks and tenant
 
 
 class JobManager:
@@ -82,13 +82,17 @@ class JobManager:
                 job_id = job_data['job_id']
                 recommendation_id = job_data['recommendation_id']
                 job_type = job_data['job_type']
-                
+                tenant_id = job_data['tenant_id']
+
                 logger.info(f"Processing job {job_id} for recommendation {recommendation_id}")
-                
+
                 # Create task for job processing
-                task = asyncio.create_task(self._process_job(job_id, recommendation_id, job_type))
-                active_jobs[job_id] = task
-                
+                task = asyncio.create_task(self._process_job(job_id, recommendation_id, job_type, tenant_id))
+                active_jobs[job_id] = {
+                    'task': task,
+                    'tenant_id': tenant_id
+                }
+
                 # Mark job as done in queue
                 job_queue.task_done()
                 
@@ -98,17 +102,18 @@ class JobManager:
         
         logger.info("Job worker loop stopped")
     
-    async def _process_job(self, job_id: str, recommendation_id: str, job_type: str):
+    async def _process_job(self, job_id: str, recommendation_id: str, job_type: str, tenant_id: str):
         """Process a single job."""
+        TenantContext.set_tenant_id(tenant_id)
         try:
             # Update job status to running
-            BenchmarkJobsDB.update_job_status(job_id, 'running')
-            
+            await BenchmarkJobsService.update_job_status(job_id, 'running', tenant_id=tenant_id)
+
             # Get recommendation details
-            recommendation = RecommendationsDB.get_recommendation(recommendation_id)
+            recommendation = await RecommendationsService.get_recommendation(recommendation_id)
             if not recommendation:
                 raise Exception(f"Recommendation {recommendation_id} not found")
-            
+
             # Process based on job type
             if job_type == 'benchmark':
                 result = await self._run_benchmark_job(job_id, recommendation)
@@ -118,19 +123,20 @@ class JobManager:
                 result = await self._run_rollback_job(job_id, recommendation)
             else:
                 raise Exception(f"Unknown job type: {job_type}")
-            
+
             # Update job with results
-            BenchmarkJobsDB.update_job_status(job_id, 'completed', result=result)
+            await BenchmarkJobsService.update_job_status(job_id, 'completed', tenant_id=tenant_id, result=result)
             logger.info(f"Job {job_id} completed successfully")
-            
+
         except Exception as e:
             logger.error(f"Job {job_id} failed: {e}")
-            BenchmarkJobsDB.update_job_status(job_id, 'error', error_message=str(e))
-        
+            await BenchmarkJobsService.update_job_status(job_id, 'error', tenant_id=tenant_id, error_message=str(e))
+
         finally:
             # Remove from active jobs
             if job_id in active_jobs:
                 del active_jobs[job_id]
+            TenantContext.clear_tenant_id()
     
     async def _run_benchmark_job(self, job_id: str, recommendation: Dict[str, Any]) -> Dict[str, Any]:
         """Run a benchmark job with real database operations."""
@@ -424,14 +430,16 @@ async def submit_job(recommendation_id: str, job_type: str = 'benchmark') -> str
     Returns:
         Job ID
     """
+    tenant_id = TenantContext.get_tenant_id_or_default()
     # Create job record first to get the job ID
-    job_id = BenchmarkJobsDB.create_job(recommendation_id, job_type)
-    
+    job_id = await BenchmarkJobsService.create_job(recommendation_id, job_type, tenant_id=tenant_id)
+
     # Add to queue
     await job_queue.put({
         'job_id': job_id,
         'recommendation_id': recommendation_id,
-        'job_type': job_type
+        'job_type': job_type,
+        'tenant_id': tenant_id
     })
     
     logger.info(f"Submitted job {job_id} for recommendation {recommendation_id}")
@@ -448,7 +456,7 @@ async def get_job_status(job_id: str) -> Optional[Dict[str, Any]]:
     Returns:
         Job status and details
     """
-    job = BenchmarkJobsDB.get_job(job_id)
+    job = await BenchmarkJobsService.get_job(job_id)
     if not job:
         return None
     
@@ -471,7 +479,7 @@ async def list_jobs(status: str = None, limit: int = 50) -> List[Dict[str, Any]]
     Returns:
         List of jobs
     """
-    jobs = BenchmarkJobsDB.list_jobs(status=status, limit=limit)
+    jobs = await BenchmarkJobsService.list_jobs(status=status, limit=limit)
     
     # Add runtime information
     for job in jobs:
@@ -490,19 +498,21 @@ async def cancel_job(job_id: str) -> bool:
     Returns:
         True if job was cancelled, False otherwise
     """
-    if job_id in active_jobs:
-        task = active_jobs[job_id]
+    job_info = active_jobs.get(job_id)
+    if job_info:
+        task = job_info['task']
         task.cancel()
         try:
             await task
         except asyncio.CancelledError:
             pass
-        
+
         # Handle race condition where job might already be removed
         if job_id in active_jobs:
             del active_jobs[job_id]
-        
-        BenchmarkJobsDB.update_job_status(job_id, 'cancelled')
+
+        tenant_id = job_info['tenant_id']
+        await BenchmarkJobsService.update_job_status(job_id, 'cancelled', tenant_id=tenant_id)
         logger.info(f"Job {job_id} cancelled")
         return True
     
@@ -519,15 +529,15 @@ async def cleanup_old_jobs(hours: int = 24) -> int:
     Returns:
         Number of jobs cleaned up
     """
-    return BenchmarkJobsDB.cleanup_old_jobs(hours)
+    return await BenchmarkJobsService.cleanup_old_jobs(hours)
 
-
-def get_job_manager_status() -> Dict[str, Any]:
+async def get_job_manager_status() -> Dict[str, Any]:
     """Get job manager status and statistics."""
+    stats = await BenchmarkJobsService.get_job_statistics()
     return {
         'is_running': job_manager.is_running,
         'queue_size': job_queue.qsize(),
         'active_jobs': len(active_jobs),
         'max_workers': job_executor._max_workers,
-        'job_statistics': BenchmarkJobsDB.get_job_statistics()
-    } 
+        'job_statistics': stats
+    }

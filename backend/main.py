@@ -20,6 +20,7 @@ from db import initialize_database, close_pool, health_check as db_health_check
 from models import HealthCheck, WebSocketMessage, APIResponse
 from collector import poll_pg_stat, get_metrics_cache, initialize_collector
 from analysis.pipeline import start_analysis_scheduler
+from tenant_context import tenant_middleware
 
 # Configure logging
 logging.basicConfig(
@@ -38,8 +39,16 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("🚀 Starting OptiSchema backend...")
     
-    # Database connection will be established when user provides credentials
-    logger.info("✅ Database connection will be established when user provides credentials")
+    # Initialize OptiSchema metadata database (for storing recommendations, analysis, etc.)
+    from metadata_db import initialize_metadata_db
+    metadata_db_ready = await initialize_metadata_db()
+    if metadata_db_ready:
+        logger.info("✅ OptiSchema metadata database initialized")
+    else:
+        logger.warning("⚠️  Metadata database not ready - recommendations storage may not work")
+    
+    # Target database connection will be established when user provides credentials
+    logger.info("✅ Target database connection will be established when user provides credentials")
     
     # Initialize the collector with connection change callback
     initialize_collector()
@@ -106,9 +115,14 @@ async def lifespan(app: FastAPI):
     await close_apply_manager()
     logger.info("✅ Apply manager closed")
     
-    # Close database connection pool
+    # Close metadata database connection pool
+    from metadata_db import close_metadata_db
+    await close_metadata_db()
+    logger.info("✅ Metadata database connection closed")
+    
+    # Close target database connection pool
     await close_pool()
-    logger.info("✅ Database connection pool closed")
+    logger.info("✅ Target database connection pool closed")
     
     logger.info("✅ OptiSchema backend shutdown complete")
 
@@ -131,6 +145,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add tenant middleware
+app.middleware("http")(tenant_middleware)
 
 
 

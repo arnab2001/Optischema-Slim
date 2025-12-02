@@ -11,6 +11,7 @@ from models import QueryMetrics, Recommendation, AnalysisResult
 from analysis.core import detect_basic_issues
 from analysis.explain import get_plan_summary
 from analysis.llm import generate_recommendation, rewrite_query
+from tenant_context import TenantContext
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,18 @@ def estimate_improvement(analysis: AnalysisResult) -> int:
     return 5
 
 
+def parse_improvement(val: Any) -> int:
+    """Parse estimated improvement value which might be a range or string."""
+    try:
+        val_str = str(val).rstrip('%').strip()
+        if '-' in val_str:
+            parts = val_str.split('-')
+            return int((float(parts[0]) + float(parts[1])) / 2)
+        return int(float(val_str))
+    except (ValueError, TypeError):
+        return 0
+
+
 async def generate_recommendations_for_analysis(analysis: AnalysisResult) -> List[Recommendation]:
     """
     Generate recommendations for a single analysis result.
@@ -65,13 +78,14 @@ async def generate_recommendations_for_analysis(analysis: AnalysisResult) -> Lis
         
         # Create AI recommendation
         ai_recommendation = Recommendation(
+            tenant_id=analysis.tenant_id,
             id=str(uuid.uuid4()),
             query_hash=analysis.query_hash,
-            recommendation_type="ai",
-            title=ai_rec.get("title", "AI Recommendation"),
+            recommendation_type=ai_rec.get("recommendation_type", "ai"),
+            title=ai_rec.get("title", "AI Optimization Suggestion"),
             description=ai_rec.get("description", ""),
             sql_fix=ai_rec.get("sql_fix"),
-            estimated_improvement_percent=int(ai_rec.get("estimated_improvement", "0").rstrip('%')) if ai_rec.get("estimated_improvement") != "Unknown" else estimate_improvement(analysis),
+            estimated_improvement_percent=parse_improvement(ai_rec.get("estimated_improvement", "0")) if ai_rec.get("estimated_improvement") != "Unknown" else estimate_improvement(analysis),
             confidence_score=ai_rec.get("confidence", 75),
             risk_level=ai_rec.get("risk_level", "medium").lower(),
             applied=False,
@@ -122,6 +136,7 @@ async def generate_recommendations_for_analysis(analysis: AnalysisResult) -> Lis
         # Generate ONE best heuristic recommendation based on bottleneck type
         if analysis.bottleneck_type in ("sequential_scan", "missing_index"):
             recs.append(Recommendation(
+                tenant_id=analysis.tenant_id,
                 id=str(uuid.uuid4()),
                 query_hash=analysis.query_hash,
                 recommendation_type="index",
@@ -136,6 +151,7 @@ async def generate_recommendations_for_analysis(analysis: AnalysisResult) -> Lis
             ))
         elif analysis.bottleneck_type == "large_sort":
             recs.append(Recommendation(
+                tenant_id=analysis.tenant_id,
                 id=str(uuid.uuid4()),
                 query_hash=analysis.query_hash,
                 recommendation_type="index",
@@ -151,6 +167,7 @@ async def generate_recommendations_for_analysis(analysis: AnalysisResult) -> Lis
         else:
             # For other bottleneck types, create a generic optimization recommendation
             recs.append(Recommendation(
+                tenant_id=analysis.tenant_id,
                 id=str(uuid.uuid4()),
                 query_hash=analysis.query_hash,
                 recommendation_type="optimization",

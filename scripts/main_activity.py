@@ -8,6 +8,7 @@ import asyncio
 import random
 import time
 import logging
+import os
 from datetime import datetime, timedelta
 import asyncpg
 from typing import List, Dict, Any
@@ -16,14 +17,11 @@ from typing import List, Dict, Any
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Database configuration for main database
-DB_CONFIG = {
-    'host': 'localhost',
-    'port': 5432,  # Main database port
-    'database': 'optischema',
-    'user': 'optischema',
-    'password': 'optischema_pass'
-}
+def _get_database_url() -> str:
+    url = os.getenv('DATABASE_URL')
+    if not url:
+        raise RuntimeError('DATABASE_URL is not set')
+    return url
 
 # Business queries that work with the main database schema
 BUSINESS_QUERIES = [
@@ -69,7 +67,7 @@ SLOW_QUERIES = [
 
 async def get_connection() -> asyncpg.Connection:
     """Get a database connection."""
-    return await asyncpg.connect(**DB_CONFIG)
+    return await asyncpg.connect(_get_database_url())
 
 async def execute_query(conn: asyncpg.Connection, query: str, params: List[Any] = None) -> None:
     """Execute a query with error handling."""

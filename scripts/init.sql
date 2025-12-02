@@ -8,9 +8,33 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- Create schema for OptiSchema
 CREATE SCHEMA IF NOT EXISTS optischema;
 
+-- Core multi-tenant tables
+CREATE TABLE IF NOT EXISTS optischema.tenants (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL UNIQUE,
+    status TEXT DEFAULT 'active' CHECK (status IN ('active','inactive','suspended')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS optischema.tenant_connections (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES optischema.tenants(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    host TEXT NOT NULL,
+    port INTEGER NOT NULL,
+    database_name TEXT NOT NULL,
+    username TEXT NOT NULL,
+    password TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE (tenant_id, name)
+);
+
 -- Create tables for storing analysis results and recommendations
 CREATE TABLE IF NOT EXISTS optischema.query_metrics (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES optischema.tenants(id),
     query_hash TEXT NOT NULL,
     query_text TEXT NOT NULL,
     total_time BIGINT NOT NULL,
@@ -34,6 +58,7 @@ CREATE TABLE IF NOT EXISTS optischema.query_metrics (
 
 CREATE TABLE IF NOT EXISTS optischema.analysis_results (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES optischema.tenants(id),
     query_hash TEXT NOT NULL,
     query_text TEXT NOT NULL,
     execution_plan JSONB,
@@ -46,14 +71,19 @@ CREATE TABLE IF NOT EXISTS optischema.analysis_results (
 
 CREATE TABLE IF NOT EXISTS optischema.recommendations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES optischema.tenants(id),
     query_hash TEXT NOT NULL,
     recommendation_type TEXT NOT NULL,
     title TEXT NOT NULL,
     description TEXT NOT NULL,
     sql_fix TEXT,
+    original_sql TEXT,
+    patch_sql TEXT,
+    execution_plan_json JSONB,
     estimated_improvement_percent INTEGER,
     confidence_score INTEGER,
     risk_level TEXT,
+    status TEXT DEFAULT 'pending',
     applied BOOLEAN DEFAULT FALSE,
     applied_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -61,6 +91,7 @@ CREATE TABLE IF NOT EXISTS optischema.recommendations (
 
 CREATE TABLE IF NOT EXISTS optischema.sandbox_tests (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES optischema.tenants(id),
     recommendation_id UUID REFERENCES optischema.recommendations(id),
     original_performance JSONB,
     optimized_performance JSONB,
@@ -72,6 +103,7 @@ CREATE TABLE IF NOT EXISTS optischema.sandbox_tests (
 
 CREATE TABLE IF NOT EXISTS optischema.audit_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES optischema.tenants(id),
     action_type TEXT NOT NULL,
     user_id TEXT,
     recommendation_id UUID REFERENCES optischema.recommendations(id),
@@ -87,7 +119,8 @@ CREATE TABLE IF NOT EXISTS optischema.audit_logs (
 
 CREATE TABLE IF NOT EXISTS optischema.connection_baselines (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    connection_id TEXT UNIQUE NOT NULL,
+    tenant_id UUID NOT NULL REFERENCES optischema.tenants(id),
+    connection_id TEXT NOT NULL,
     connection_name TEXT NOT NULL,
     baseline_latency_ms DOUBLE PRECISION NOT NULL,
     measured_at TIMESTAMP WITH TIME ZONE NOT NULL,
@@ -99,6 +132,7 @@ CREATE TABLE IF NOT EXISTS optischema.connection_baselines (
 
 CREATE TABLE IF NOT EXISTS optischema.index_recommendations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES optischema.tenants(id),
     index_name TEXT NOT NULL,
     table_name TEXT NOT NULL,
     schema_name TEXT NOT NULL,
@@ -116,22 +150,39 @@ CREATE TABLE IF NOT EXISTS optischema.index_recommendations (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Benchmark jobs table for async operations
+CREATE TABLE IF NOT EXISTS optischema.benchmark_jobs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES optischema.tenants(id),
+    recommendation_id UUID NOT NULL,
+    status TEXT DEFAULT 'pending',
+    job_type TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    started_at TIMESTAMP WITH TIME ZONE,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    result_json JSONB,
+    error_message TEXT
+);
+
 -- Create indexes for better performance
-CREATE INDEX IF NOT EXISTS idx_query_metrics_hash ON optischema.query_metrics(query_hash);
-CREATE INDEX IF NOT EXISTS idx_query_metrics_created_at ON optischema.query_metrics(created_at);
-CREATE INDEX IF NOT EXISTS idx_analysis_results_hash ON optischema.analysis_results(query_hash);
-CREATE INDEX IF NOT EXISTS idx_recommendations_hash ON optischema.recommendations(query_hash);
-CREATE INDEX IF NOT EXISTS idx_recommendations_type ON optischema.recommendations(recommendation_type);
-CREATE INDEX IF NOT EXISTS idx_recommendations_applied ON optischema.recommendations(applied);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_action_type ON optischema.audit_logs(action_type);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON optischema.audit_logs(created_at);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON optischema.audit_logs(user_id);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_recommendation_id ON optischema.audit_logs(recommendation_id);
-CREATE INDEX IF NOT EXISTS idx_connection_baselines_connection_id ON optischema.connection_baselines(connection_id);
-CREATE INDEX IF NOT EXISTS idx_connection_baselines_is_active ON optischema.connection_baselines(is_active);
-CREATE INDEX IF NOT EXISTS idx_index_recommendations_schema_table ON optischema.index_recommendations(schema_name, table_name);
-CREATE INDEX IF NOT EXISTS idx_index_recommendations_risk_level ON optischema.index_recommendations(risk_level);
-CREATE INDEX IF NOT EXISTS idx_index_recommendations_days_unused ON optischema.index_recommendations(days_unused);
+CREATE INDEX IF NOT EXISTS idx_query_metrics_tenant_hash ON optischema.query_metrics(tenant_id, query_hash);
+CREATE INDEX IF NOT EXISTS idx_query_metrics_tenant_created_at ON optischema.query_metrics(tenant_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_analysis_results_tenant_hash ON optischema.analysis_results(tenant_id, query_hash);
+CREATE INDEX IF NOT EXISTS idx_recommendations_tenant_hash ON optischema.recommendations(tenant_id, query_hash);
+CREATE INDEX IF NOT EXISTS idx_recommendations_tenant_type ON optischema.recommendations(tenant_id, recommendation_type);
+CREATE INDEX IF NOT EXISTS idx_recommendations_tenant_applied ON optischema.recommendations(tenant_id, applied);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant_action_type ON optischema.audit_logs(tenant_id, action_type);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant_created_at ON optischema.audit_logs(tenant_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant_user_id ON optischema.audit_logs(tenant_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant_recommendation_id ON optischema.audit_logs(tenant_id, recommendation_id);
+CREATE INDEX IF NOT EXISTS idx_connection_baselines_tenant_connection_id ON optischema.connection_baselines(tenant_id, connection_id);
+CREATE INDEX IF NOT EXISTS idx_connection_baselines_tenant_is_active ON optischema.connection_baselines(tenant_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_index_recommendations_tenant_schema_table ON optischema.index_recommendations(tenant_id, schema_name, table_name);
+CREATE INDEX IF NOT EXISTS idx_index_recommendations_tenant_risk_level ON optischema.index_recommendations(tenant_id, risk_level);
+CREATE INDEX IF NOT EXISTS idx_index_recommendations_tenant_days_unused ON optischema.index_recommendations(tenant_id, days_unused);
+CREATE INDEX IF NOT EXISTS idx_benchmark_jobs_tenant_status ON optischema.benchmark_jobs(tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_benchmark_jobs_tenant_created_at ON optischema.benchmark_jobs(tenant_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_benchmark_jobs_tenant_recommendation_id ON optischema.benchmark_jobs(tenant_id, recommendation_id);
 
 -- Create functions for updating timestamps
 CREATE OR REPLACE FUNCTION optischema.update_updated_at_column()
@@ -150,15 +201,16 @@ CREATE TRIGGER update_query_metrics_updated_at
 -- Create views for easier querying
 CREATE OR REPLACE VIEW optischema.hot_queries AS
 SELECT 
+    tenant_id,
     query_hash,
     query_text,
     total_time,
     calls,
     mean_time,
-    ROUND((total_time / NULLIF(SUM(total_time) OVER (), 0)) * 100, 2) as percentage_of_total_time
+    ROUND((total_time / NULLIF(SUM(total_time) OVER (PARTITION BY tenant_id), 0)) * 100, 2) as percentage_of_total_time
 FROM optischema.query_metrics
 WHERE created_at >= NOW() - INTERVAL '1 hour'
-ORDER BY total_time DESC;
+ORDER BY tenant_id, total_time DESC;
 
 CREATE OR REPLACE VIEW optischema.recent_recommendations AS
 SELECT 
@@ -166,9 +218,9 @@ SELECT
     qm.query_text,
     qm.mean_time as current_mean_time
 FROM optischema.recommendations r
-JOIN optischema.query_metrics qm ON r.query_hash = qm.query_hash
+JOIN optischema.query_metrics qm ON r.tenant_id = qm.tenant_id AND r.query_hash = qm.query_hash
 WHERE r.created_at >= NOW() - INTERVAL '24 hours'
-ORDER BY r.created_at DESC;
+ORDER BY r.tenant_id, r.created_at DESC;
 
 -- Grant permissions
 GRANT USAGE ON SCHEMA optischema TO optischema;
@@ -176,8 +228,14 @@ GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA optischema TO optischema;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA optischema TO optischema;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA optischema TO optischema;
 
+-- Insert default tenant
+INSERT INTO optischema.tenants (id, name, status)
+VALUES ('00000000-0000-0000-0000-000000000001', 'default', 'active')
+ON CONFLICT (name) DO NOTHING;
+
 -- Insert some sample data for testing (optional)
 INSERT INTO optischema.query_metrics (
+    tenant_id,
     query_hash, 
     query_text, 
     total_time, 
@@ -185,6 +243,7 @@ INSERT INTO optischema.query_metrics (
     mean_time
 ) VALUES 
 (
+    '00000000-0000-0000-0000-000000000001',
     'sample_query_1',
     'SELECT * FROM information_schema.tables WHERE table_schema = $1',
     1000000,
@@ -192,6 +251,7 @@ INSERT INTO optischema.query_metrics (
     10000
 ),
 (
+    '00000000-0000-0000-0000-000000000001',
     'sample_query_2', 
     'SELECT COUNT(*) FROM pg_stat_statements',
     500000,
@@ -205,6 +265,6 @@ BEGIN
     RAISE NOTICE 'OptiSchema database initialized successfully!';
     RAISE NOTICE 'Extensions enabled: pg_stat_statements, uuid-ossp';
     RAISE NOTICE 'Schema created: optischema';
-    RAISE NOTICE 'Tables created: query_metrics, analysis_results, recommendations, sandbox_tests';
+    RAISE NOTICE 'Tables created incl. tenants, tenant_connections, query_metrics, analysis_results, recommendations, sandbox_tests, audit_logs, connection_baselines, index_recommendations, benchmark_jobs';
     RAISE NOTICE 'Views created: hot_queries, recent_recommendations';
 END $$; 

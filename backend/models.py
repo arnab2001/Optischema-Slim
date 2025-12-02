@@ -12,6 +12,7 @@ from uuid import UUID
 class QueryMetrics(BaseModel):
     """Model for PostgreSQL query metrics from pg_stat_statements."""
     
+    tenant_id: UUID = Field(..., description="Tenant identifier")
     query_hash: str = Field(..., description="Hash of the query text")
     query_text: str = Field(..., description="The actual SQL query text")
     total_time: int = Field(..., description="Total time spent executing this query (microseconds)")
@@ -49,6 +50,7 @@ class ExecutionPlan(BaseModel):
 class AnalysisResult(BaseModel):
     """Model for query analysis results."""
     
+    tenant_id: UUID = Field(..., description="Tenant identifier")
     id: Optional[UUID] = Field(None, description="Unique identifier")
     query_hash: str = Field(..., description="Hash of the analyzed query")
     query_text: str = Field(..., description="The SQL query text")
@@ -65,6 +67,7 @@ class AnalysisResult(BaseModel):
 class Recommendation(BaseModel):
     """Model for optimization recommendations."""
     
+    tenant_id: UUID = Field(..., description="Tenant identifier")
     id: Optional[UUID] = Field(None, description="Unique identifier")
     query_hash: str = Field(..., description="Hash of the query this recommendation is for")
     recommendation_type: str = Field(..., description="Type of recommendation (index, rewrite, config)")
@@ -103,6 +106,7 @@ class SandboxTest(BaseModel):
 class BenchmarkJob(BaseModel):
     """Model for benchmark job tracking."""
     
+    tenant_id: UUID = Field(..., description="Tenant identifier")
     id: str = Field(..., description="Unique job identifier")
     recommendation_id: str = Field(..., description="ID of the recommendation being benchmarked")
     status: str = Field(default="pending", description="Job status (pending, running, completed, failed, error)")
@@ -193,6 +197,7 @@ class AnalysisResponse(APIResponse):
 class AuditLog(BaseModel):
     """Model for audit logging of all system actions."""
     
+    tenant_id: UUID = Field(..., description="Tenant identifier")
     id: Optional[UUID] = Field(None, description="Unique identifier")
     action_type: str = Field(..., description="Type of action (recommendation_applied, benchmark_run, index_dropped, etc.)")
     user_id: Optional[str] = Field(None, description="User who performed the action")
@@ -218,6 +223,7 @@ class AuditLog(BaseModel):
 class ConnectionBaseline(BaseModel):
     """Model for storing connection latency baselines."""
     
+    tenant_id: UUID = Field(..., description="Tenant identifier")
     id: Optional[UUID] = Field(None, description="Unique identifier")
     connection_id: str = Field(..., description="Unique connection identifier")
     connection_name: str = Field(..., description="Human-readable connection name")
@@ -232,6 +238,7 @@ class ConnectionBaseline(BaseModel):
 class IndexRecommendation(BaseModel):
     """Model for unused/redundant index recommendations."""
     
+    tenant_id: UUID = Field(..., description="Tenant identifier")
     id: Optional[UUID] = Field(None, description="Unique identifier")
     index_name: str = Field(..., description="Name of the index")
     table_name: str = Field(..., description="Name of the table")

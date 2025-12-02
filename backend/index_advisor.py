@@ -3,60 +3,32 @@ Index advisor service for OptiSchema backend.
 Analyzes pg_stat_user_indexes to identify unused and redundant indexes.
 """
 
-import sqlite3
 import json
 import uuid
 import asyncpg
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
-from pathlib import Path
 import logging
+
+from connection_manager import connection_manager
+from tenant_context import TenantContext
 
 logger = logging.getLogger(__name__)
 
 class IndexAdvisorService:
-    """Service for analyzing and recommending index optimizations using SQLite for prototyping"""
-    
-    DB_PATH = Path("/tmp/optischema_indexes.db")
-    
-    @classmethod
-    def _init_db(cls):
-        """Initialize SQLite database and create tables"""
-        cls.DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-        
-        conn = sqlite3.connect(str(cls.DB_PATH))
-        cursor = conn.cursor()
-        
-        # Create index_recommendations table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS index_recommendations (
-                id TEXT PRIMARY KEY,
-                index_name TEXT NOT NULL,
-                table_name TEXT NOT NULL,
-                schema_name TEXT NOT NULL,
-                size_bytes INTEGER NOT NULL,
-                size_pretty TEXT NOT NULL,
-                idx_scan INTEGER NOT NULL,
-                idx_tup_read INTEGER NOT NULL,
-                idx_tup_fetch INTEGER NOT NULL,
-                last_used TEXT,
-                days_unused INTEGER NOT NULL,
-                estimated_savings_mb REAL NOT NULL,
-                risk_level TEXT NOT NULL,
-                recommendation_type TEXT NOT NULL,
-                sql_fix TEXT,
-                created_at TEXT NOT NULL
-            )
-        ''')
-        
-        # Create indexes
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_recommendation_type ON index_recommendations(recommendation_type)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_recommendation_risk ON index_recommendations(risk_level)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_recommendation_created ON index_recommendations(created_at)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_recommendation_table ON index_recommendations(table_name, schema_name)')
-        
-        conn.commit()
-        conn.close()
+    """Service for analyzing and recommending index optimizations."""
+
+    @staticmethod
+    async def _get_pool():
+        from metadata_db import get_metadata_pool
+        pool = await get_metadata_pool()
+        if not pool:
+            raise RuntimeError("No metadata database connection available for index advisor")
+        return pool
+
+    @staticmethod
+    def _resolve_tenant(tenant_id: Optional[str] = None) -> str:
+        return tenant_id or TenantContext.get_tenant_id_or_default()
     
     @staticmethod
     async def analyze_unused_indexes(connection_config: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -93,15 +65,13 @@ class IndexAdvisorService:
             query = """
                 SELECT 
                     schemaname as schema_name,
-                    tablename as table_name,
-                    indexname as index_name,
+                    relname as table_name,
+                    indexrelname as index_name,
                     pg_size_pretty(pg_relation_size(indexrelid)) as size_pretty,
                     pg_relation_size(indexrelid) as size_bytes,
                     idx_scan,
                     idx_tup_read,
-                    idx_tup_fetch,
-                    last_vacuum,
-                    last_autovacuum
+                    idx_tup_fetch
                 FROM pg_stat_user_indexes 
                 WHERE idx_scan = 0
                 ORDER BY pg_relation_size(indexrelid) DESC
@@ -112,21 +82,44 @@ class IndexAdvisorService:
             
             recommendations = []
             for row in rows:
-                # Calculate days since last use (estimate based on vacuum info)
-                last_used = row['last_vacuum'] or row['last_autovacuum']
-                days_unused = 30  # Default assumption
-                if last_used:
-                    days_unused = (datetime.utcnow() - last_used).days
+                # Since we can't determine exact last use from pg_stat_user_indexes,
+                # we'll use idx_scan = 0 as the indicator
+                days_unused = 0  # Unknown exact days, but we know idx_scan = 0
                 
                 # Calculate estimated savings
                 estimated_savings_mb = row['size_bytes'] / (1024 * 1024)
                 
-                # Determine risk level
-                risk_level = "low"
-                if estimated_savings_mb > 100:
+                # Detect index type and determine safety
+                index_name = row['index_name']
+                is_primary_key = index_name.startswith('PK_') or index_name.endswith('_pkey')
+                is_unique = index_name.startswith('UQ_') or index_name.startswith('REL_') or 'unique' in index_name.lower()
+                is_foreign_key = index_name.startswith('FK_') or index_name.startswith('IDX_FK_')
+                
+                # Categorize safety level
+                if is_primary_key:
+                    safety_level = "critical"
+                    reason = "Primary key index - required for data integrity and table structure. DO NOT DROP."
+                    risk_level = "critical"
+                elif is_unique:
+                    safety_level = "critical"
+                    reason = "Unique constraint index - enforces data uniqueness. Dropping will remove the constraint. Review carefully."
                     risk_level = "high"
-                elif estimated_savings_mb > 10:
-                    risk_level = "medium"
+                elif is_foreign_key:
+                    safety_level = "needs_review"
+                    reason = "Foreign key index - may be required for referential integrity. Review foreign key relationships before dropping."
+                    risk_level = "high"
+                else:
+                    # Regular index - safe to drop if truly unused
+                    safety_level = "safe"
+                    if estimated_savings_mb > 100:
+                        reason = f"Unused regular index (0 scans). Large size ({row['size_pretty']}) - good candidate for removal to save space."
+                        risk_level = "low"
+                    elif estimated_savings_mb > 10:
+                        reason = f"Unused regular index (0 scans). Medium size ({row['size_pretty']}) - can be dropped to save space."
+                        risk_level = "low"
+                    else:
+                        reason = f"Unused regular index (0 scans). Small size ({row['size_pretty']}) - minimal impact but can be cleaned up."
+                        risk_level = "low"
                 
                 # Generate SQL fix
                 sql_fix = f"DROP INDEX {row['schema_name']}.{row['index_name']};"
@@ -140,10 +133,12 @@ class IndexAdvisorService:
                     'idx_scan': row['idx_scan'],
                     'idx_tup_read': row['idx_tup_read'],
                     'idx_tup_fetch': row['idx_tup_fetch'],
-                    'last_used': last_used.isoformat() if last_used else None,
+                    'last_used': None,  # Not available from pg_stat_user_indexes
                     'days_unused': days_unused,
                     'estimated_savings_mb': round(estimated_savings_mb, 2),
                     'risk_level': risk_level,
+                    'safety_level': safety_level,
+                    'reason': reason,
                     'recommendation_type': 'drop',
                     'sql_fix': sql_fix
                 })
@@ -190,8 +185,8 @@ class IndexAdvisorService:
             query = """
                 SELECT 
                     schemaname as schema_name,
-                    tablename as table_name,
-                    indexname as index_name,
+                    relname as table_name,
+                    indexrelname as index_name,
                     pg_size_pretty(pg_relation_size(indexrelid)) as size_pretty,
                     pg_relation_size(indexrelid) as size_bytes,
                     idx_scan,
@@ -246,147 +241,192 @@ class IndexAdvisorService:
             return []
     
     @classmethod
-    def store_index_recommendations(cls, recommendations: List[Dict[str, Any]]) -> List[str]:
-        """Store index recommendations in SQLite"""
-        cls._init_db()
-        
-        recommendation_ids = []
-        created_at = datetime.utcnow().isoformat()
-        
-        conn = sqlite3.connect(str(cls.DB_PATH))
-        cursor = conn.cursor()
-        
-        for rec in recommendations:
-            rec_id = str(uuid.uuid4())
-            recommendation_ids.append(rec_id)
-            
-            cursor.execute('''
-                INSERT INTO index_recommendations (
-                    id, index_name, table_name, schema_name, size_bytes, size_pretty,
-                    idx_scan, idx_tup_read, idx_tup_fetch, last_used, days_unused,
-                    estimated_savings_mb, risk_level, recommendation_type, sql_fix, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                rec_id, rec['index_name'], rec['table_name'], rec['schema_name'],
-                rec['size_bytes'], rec['size_pretty'], rec['idx_scan'], rec['idx_tup_read'],
-                rec['idx_tup_fetch'], rec['last_used'], rec['days_unused'],
-                rec['estimated_savings_mb'], rec['risk_level'], rec['recommendation_type'],
-                rec['sql_fix'], created_at
-            ))
-        
-        conn.commit()
-        conn.close()
-        
-        logger.info(f"Stored {len(recommendations)} index recommendations")
-        return recommendation_ids
-    
+    async def store_index_recommendations(
+        cls,
+        recommendations: List[Dict[str, Any]],
+        tenant_id: Optional[str] = None,
+    ) -> List[str]:
+        if not recommendations:
+            return []
+
+        tenant = cls._resolve_tenant(tenant_id)
+        pool = await cls._get_pool()
+        stored_ids: List[str] = []
+        created_at = datetime.utcnow()
+
+        async with pool.acquire() as conn:
+            for rec in recommendations:
+                rec_id = rec.get('id') or str(uuid.uuid4())
+                stored_ids.append(rec_id)
+                await conn.execute(
+                    """
+                    INSERT INTO optischema.index_recommendations (
+                        id,
+                        tenant_id,
+                        index_name,
+                        table_name,
+                        schema_name,
+                        size_bytes,
+                        size_pretty,
+                        idx_scan,
+                        idx_tup_read,
+                        idx_tup_fetch,
+                        last_used,
+                        days_unused,
+                        estimated_savings_mb,
+                        risk_level,
+                        safety_level,
+                        reason,
+                        recommendation_type,
+                        sql_fix,
+                        created_at
+                    ) VALUES (
+                        $1, $2, $3, $4, $5, $6, $7,
+                        $8, $9, $10, $11, $12, $13,
+                        $14, $15, $16, $17, $18, $19
+                    )
+                    ON CONFLICT (id)
+                    DO UPDATE SET
+                        size_bytes = EXCLUDED.size_bytes,
+                        size_pretty = EXCLUDED.size_pretty,
+                        idx_scan = EXCLUDED.idx_scan,
+                        idx_tup_read = EXCLUDED.idx_tup_read,
+                        idx_tup_fetch = EXCLUDED.idx_tup_fetch,
+                        last_used = EXCLUDED.last_used,
+                        days_unused = EXCLUDED.days_unused,
+                        estimated_savings_mb = EXCLUDED.estimated_savings_mb,
+                        risk_level = EXCLUDED.risk_level,
+                        safety_level = EXCLUDED.safety_level,
+                        reason = EXCLUDED.reason,
+                        recommendation_type = EXCLUDED.recommendation_type,
+                        sql_fix = EXCLUDED.sql_fix,
+                        created_at = EXCLUDED.created_at
+                    """,
+                    rec_id,
+                    tenant,
+                    rec['index_name'],
+                    rec['table_name'],
+                    rec['schema_name'],
+                    rec['size_bytes'],
+                    rec['size_pretty'],
+                    rec['idx_scan'],
+                    rec['idx_tup_read'],
+                    rec['idx_tup_fetch'],
+                    rec.get('last_used'),
+                    rec['days_unused'],
+                    rec['estimated_savings_mb'],
+                    rec['risk_level'],
+                    rec.get('safety_level', 'needs_review'),
+                    rec.get('reason', 'No reason provided'),
+                    rec['recommendation_type'],
+                    rec.get('sql_fix'),
+                    rec.get('created_at', created_at),
+                )
+        logger.info("Stored %s index recommendations for tenant %s", len(stored_ids), tenant)
+        return stored_ids
+
     @classmethod
-    def get_index_recommendations(
+    async def get_index_recommendations(
         cls,
         recommendation_type: Optional[str] = None,
         risk_level: Optional[str] = None,
         limit: int = 100,
-        offset: int = 0
+        offset: int = 0,
+        tenant_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """Get index recommendations with optional filtering"""
-        cls._init_db()
-        
-        conn = sqlite3.connect(str(cls.DB_PATH))
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        query = "SELECT * FROM index_recommendations WHERE 1=1"
-        params = []
-        
+        tenant = cls._resolve_tenant(tenant_id)
+        pool = await cls._get_pool()
+
+        query_parts = [
+            "SELECT * FROM optischema.index_recommendations WHERE tenant_id = $1"
+        ]
+        params: List[Any] = [tenant]
+
         if recommendation_type:
-            query += " AND recommendation_type = ?"
             params.append(recommendation_type)
-        
+            query_parts.append(f"AND recommendation_type = ${len(params)}")
         if risk_level:
-            query += " AND risk_level = ?"
             params.append(risk_level)
-        
-        query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+            query_parts.append(f"AND risk_level = ${len(params)}")
+
         params.extend([limit, offset])
-        
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-        
-        recommendations = []
-        for row in rows:
-            recommendations.append(dict(row))
-        
-        conn.close()
-        return recommendations
-    
+        query_parts.append(f"ORDER BY created_at DESC LIMIT ${len(params)-1} OFFSET ${len(params)}")
+
+        async with pool.acquire() as conn:
+            rows = await conn.fetch("\n".join(query_parts), *params)
+
+        return [dict(row) for row in rows]
+
     @classmethod
-    def get_index_recommendation_summary(cls) -> Dict[str, Any]:
-        """Get summary statistics of index recommendations"""
-        cls._init_db()
-        
-        conn = sqlite3.connect(str(cls.DB_PATH))
-        cursor = conn.cursor()
-        
-        # Total recommendations
-        cursor.execute("SELECT COUNT(*) FROM index_recommendations")
-        total_recommendations = cursor.fetchone()[0]
-        
-        # Recommendations by type
-        cursor.execute("""
-            SELECT recommendation_type, COUNT(*) as count 
-            FROM index_recommendations 
-            GROUP BY recommendation_type
-        """)
-        type_counts = dict(cursor.fetchall())
-        
-        # Recommendations by risk level
-        cursor.execute("""
-            SELECT risk_level, COUNT(*) as count 
-            FROM index_recommendations 
-            GROUP BY risk_level
-        """)
-        risk_counts = dict(cursor.fetchall())
-        
-        # Total potential savings
-        cursor.execute("""
-            SELECT SUM(estimated_savings_mb) FROM index_recommendations
-        """)
-        total_savings = cursor.fetchone()[0] or 0
-        
-        # Recent recommendations (last 24 hours)
-        cursor.execute("""
-            SELECT COUNT(*) FROM index_recommendations 
-            WHERE created_at >= datetime('now', '-1 day')
-        """)
-        recent_recommendations = cursor.fetchone()[0]
-        
-        conn.close()
-        
+    async def get_index_recommendation_summary(
+        cls,
+        tenant_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        tenant = cls._resolve_tenant(tenant_id)
+        pool = await cls._get_pool()
+
+        async with pool.acquire() as conn:
+            total = await conn.fetchval(
+                "SELECT COUNT(*) FROM optischema.index_recommendations WHERE tenant_id = $1",
+                tenant,
+            )
+            type_rows = await conn.fetch(
+                """
+                SELECT recommendation_type, COUNT(*)
+                FROM optischema.index_recommendations
+                WHERE tenant_id = $1
+                GROUP BY recommendation_type
+                """,
+                tenant,
+            )
+            risk_rows = await conn.fetch(
+                """
+                SELECT risk_level, COUNT(*)
+                FROM optischema.index_recommendations
+                WHERE tenant_id = $1
+                GROUP BY risk_level
+                """,
+                tenant,
+            )
+            savings = await conn.fetchval(
+                """
+                SELECT SUM(estimated_savings_mb)
+                FROM optischema.index_recommendations
+                WHERE tenant_id = $1
+                """,
+                tenant,
+            )
+            recent = await conn.fetchval(
+                """
+                SELECT COUNT(*)
+                FROM optischema.index_recommendations
+                WHERE tenant_id = $1 AND created_at >= NOW() - INTERVAL '1 day'
+                """,
+                tenant,
+            )
+
         return {
-            "total_recommendations": total_recommendations,
-            "recommendations_by_type": type_counts,
-            "recommendations_by_risk": risk_counts,
-            "total_potential_savings_mb": round(total_savings, 2),
-            "recent_recommendations_24h": recent_recommendations
+            "total_recommendations": total or 0,
+            "recommendations_by_type": {row[0]: row[1] for row in type_rows},
+            "recommendations_by_risk": {row[0]: row[1] for row in risk_rows},
+            "total_potential_savings_mb": round(savings or 0, 2),
+            "recent_recommendations_24h": recent or 0,
         }
-    
+
     @classmethod
-    def delete_recommendation(cls, recommendation_id: str) -> bool:
-        """Delete a specific recommendation"""
-        cls._init_db()
-        
-        conn = sqlite3.connect(str(cls.DB_PATH))
-        cursor = conn.cursor()
-        
-        cursor.execute('DELETE FROM index_recommendations WHERE id = ?', (recommendation_id,))
-        deleted = cursor.rowcount > 0
-        
-        conn.commit()
-        conn.close()
-        
+    async def delete_recommendation(cls, recommendation_id: str, tenant_id: Optional[str] = None) -> bool:
+        """Delete a specific recommendation."""
+        tenant = cls._resolve_tenant(tenant_id)
+        pool = await cls._get_pool()
+        async with pool.acquire() as conn:
+            result = await conn.execute(
+                "DELETE FROM optischema.index_recommendations WHERE tenant_id = $1 AND id = $2",
+                tenant,
+                recommendation_id,
+            )
+        deleted = result.startswith("DELETE") and result.split()[-1] != "0"
         if deleted:
-            logger.info(f"Deleted index recommendation: {recommendation_id}")
-        
+            logger.info("Deleted index recommendation %s for tenant %s", recommendation_id, tenant)
         return deleted
     
     @staticmethod
@@ -451,8 +491,8 @@ class IndexAdvisorService:
             largest_indexes_query = """
                 SELECT 
                     schemaname as schema_name,
-                    tablename as table_name,
-                    indexname as index_name,
+                    relname as table_name,
+                    indexrelname as index_name,
                     pg_size_pretty(pg_relation_size(indexrelid)) as size_pretty,
                     pg_relation_size(indexrelid) as size_bytes,
                     idx_scan
@@ -502,8 +542,12 @@ class IndexAdvisorService:
                 "error": str(e)
             }
 
-    @staticmethod
-    async def run_full_analysis(connection_config: Dict[str, Any]) -> Dict[str, Any]:
+    @classmethod
+    async def run_full_analysis(
+        cls,
+        connection_config: Dict[str, Any],
+        tenant_id: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         Run full index analysis and store recommendations.
         
@@ -513,6 +557,8 @@ class IndexAdvisorService:
         Returns:
             Analysis results summary
         """
+        tenant = cls._resolve_tenant(tenant_id)
+
         try:
             # Get database index statistics first
             index_stats = await IndexAdvisorService.get_database_index_stats(connection_config)
@@ -528,7 +574,10 @@ class IndexAdvisorService:
             
             # Store recommendations
             if all_recommendations:
-                recommendation_ids = IndexAdvisorService.store_index_recommendations(all_recommendations)
+                recommendation_ids = await IndexAdvisorService.store_index_recommendations(
+                    all_recommendations,
+                    tenant_id=tenant
+                )
             else:
                 recommendation_ids = []
             

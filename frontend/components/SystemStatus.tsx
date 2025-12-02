@@ -12,7 +12,16 @@ export default function SystemStatus() {
 
   const checkHealth = async () => {
     try {
-      const response = await fetch('/api/health')
+      const token = localStorage.getItem('auth_token');
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch('/api/health', { headers });
       if (response.ok) {
         setStatus('healthy')
       } else {

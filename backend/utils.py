@@ -61,7 +61,7 @@ def calculate_performance_score(hot_query: Any, execution_plan: Optional[Any] = 
         except Exception as e:
             logger.warning(f"Failed to analyze execution plan for performance score: {e}")
     
-    return max(0, min(100, score))
+    return int(max(0, min(100, score)))
 
 
 def get_plan_summary(execution_plan: Any) -> dict:

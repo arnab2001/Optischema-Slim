@@ -52,36 +52,36 @@ function getPerformanceScore(metric: any): number {
   if (metric.performance_score !== undefined && metric.performance_score !== null) {
     return metric.performance_score;
   }
-  
+
   // Fallback calculation (legacy support)
   let score = 100;
-  
+
   // Penalize slow queries (mean_time > 10ms)
   if (metric.mean_time > 10) {
     score -= Math.min(40, (metric.mean_time - 10) / 2);
   }
-  
+
   // Penalize low cache hit rate
-  const cacheHit = metric.shared_blks_hit + metric.shared_blks_read > 0 
-    ? (metric.shared_blks_hit / (metric.shared_blks_hit + metric.shared_blks_read)) * 100 
+  const cacheHit = metric.shared_blks_hit + metric.shared_blks_read > 0
+    ? (metric.shared_blks_hit / (metric.shared_blks_hit + metric.shared_blks_read)) * 100
     : 100;
   if (cacheHit < 95) {
     score -= (95 - cacheHit) * 0.5;
   }
-  
+
   // Penalize high time percentage (queries consuming too much DB time)
   if (metric.time_percentage > 10) {
     score -= Math.min(20, (metric.time_percentage - 10) * 0.5);
   }
-  
+
   // Bonus for efficient row processing
-  const rowEfficiency = metric.rows > 0 && metric.shared_blks_read > 0 
-    ? Math.min(100, (metric.rows / (metric.shared_blks_read * 8192 / 100)) * 100) 
+  const rowEfficiency = metric.rows > 0 && metric.shared_blks_read > 0
+    ? Math.min(100, (metric.rows / (metric.shared_blks_read * 8192 / 100)) * 100)
     : 100;
   if (rowEfficiency > 80) {
     score += Math.min(10, (rowEfficiency - 80) * 0.2);
   }
-  
+
   return Math.max(0, Math.min(100, score));
 }
 
@@ -132,7 +132,7 @@ export default function QueryTable({ metrics, onDrillDown, onLoadMore, hasMore =
   // Sort filtered metrics
   const sorted = [...filteredMetrics].sort((a, b) => {
     let aVal: number, bVal: number
-    
+
     switch (sortField) {
       case 'cache_hit':
         aVal = a.shared_blks_hit + a.shared_blks_read > 0 ? (a.shared_blks_hit / (a.shared_blks_hit + a.shared_blks_read)) * 100 : 100
@@ -150,7 +150,7 @@ export default function QueryTable({ metrics, onDrillDown, onLoadMore, hasMore =
         aVal = a[sortField] || 0
         bVal = b[sortField] || 0
     }
-    
+
     return sortDirection === 'desc' ? bVal - aVal : aVal - bVal
   })
 
@@ -181,11 +181,10 @@ export default function QueryTable({ metrics, onDrillDown, onLoadMore, hasMore =
               <button
                 key={filter.key}
                 onClick={() => setActiveFilter(filter.key as FilterType)}
-                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                  activeFilter === filter.key
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${activeFilter === filter.key
                     ? 'bg-primary text-primary-foreground'
                     : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                }`}
+                  }`}
               >
                 {filter.label} ({filter.count})
               </button>
@@ -204,7 +203,7 @@ export default function QueryTable({ metrics, onDrillDown, onLoadMore, hasMore =
       <div className="border border-border rounded-lg overflow-hidden">
         {/* Desktop Table */}
         <div className="hidden md:block">
-          <div 
+          <div
             className={`overflow-x-auto ${compactMode ? 'max-h-[600px]' : 'max-h-[500px]'}`}
             onScroll={handleScroll}
           >
@@ -212,7 +211,7 @@ export default function QueryTable({ metrics, onDrillDown, onLoadMore, hasMore =
               <thead className="sticky top-0 z-20">
                 <tr className="bg-muted/60 border-b border-border">
                   <th className="sticky left-0 bg-muted/60 z-30 px-3 py-3 text-left font-medium text-foreground">SQL</th>
-                  <th 
+                  <th
                     className="px-3 py-3 text-left font-medium text-foreground cursor-pointer hover:bg-muted/80 transition-colors"
                     onClick={() => handleSort('time_percentage')}
                   >
@@ -221,7 +220,7 @@ export default function QueryTable({ metrics, onDrillDown, onLoadMore, hasMore =
                       {getSortIcon('time_percentage')}
                     </div>
                   </th>
-                  <th 
+                  <th
                     className="px-3 py-3 text-left font-medium text-foreground cursor-pointer hover:bg-muted/80 transition-colors"
                     onClick={() => handleSort('mean_time')}
                   >
@@ -230,7 +229,7 @@ export default function QueryTable({ metrics, onDrillDown, onLoadMore, hasMore =
                       {getSortIcon('mean_time')}
                     </div>
                   </th>
-                  <th 
+                  <th
                     className="px-3 py-3 text-left font-medium text-foreground cursor-pointer hover:bg-muted/80 transition-colors"
                     onClick={() => handleSort('calls')}
                   >
@@ -239,7 +238,7 @@ export default function QueryTable({ metrics, onDrillDown, onLoadMore, hasMore =
                       {getSortIcon('calls')}
                     </div>
                   </th>
-                  <th 
+                  <th
                     className="px-3 py-3 text-left font-medium text-foreground cursor-pointer hover:bg-muted/80 transition-colors"
                     onClick={() => handleSort('cache_hit')}
                   >
@@ -248,7 +247,7 @@ export default function QueryTable({ metrics, onDrillDown, onLoadMore, hasMore =
                       {getSortIcon('cache_hit')}
                     </div>
                   </th>
-                  <th 
+                  <th
                     className="px-3 py-3 text-left font-medium text-foreground cursor-pointer hover:bg-muted/80 transition-colors"
                     onClick={() => handleSort('row_efficiency')}
                   >
@@ -257,7 +256,7 @@ export default function QueryTable({ metrics, onDrillDown, onLoadMore, hasMore =
                       {getSortIcon('row_efficiency')}
                     </div>
                   </th>
-                  <th 
+                  <th
                     className="px-3 py-3 text-left font-medium text-foreground cursor-pointer hover:bg-muted/80 transition-colors"
                     onClick={() => handleSort('efficiency_score')}
                   >
@@ -275,13 +274,12 @@ export default function QueryTable({ metrics, onDrillDown, onLoadMore, hasMore =
                   const eff = metric.rows > 0 && metric.shared_blks_read > 0 ? Math.min(100, (metric.rows / (metric.shared_blks_read * 8192 / 100)) * 100) : NaN;
                   const efficiencyScore = getPerformanceScore(metric);
                   const isSlow = isSlowQuery(metric);
-                  
+
                   return (
                     <tr
                       key={idx}
-                      className={`group transition-all duration-200 border-b border-border/50 hover:bg-yellow-50 hover:cursor-pointer ${
-                        hovered === idx ? 'bg-yellow-50' : ''
-                      } ${compactMode ? 'py-2' : 'py-3'}`}
+                      className={`group transition-all duration-200 border-b border-border/50 hover:bg-yellow-50 hover:cursor-pointer ${hovered === idx ? 'bg-yellow-50' : ''
+                        } ${compactMode ? 'py-2' : 'py-3'}`}
                       onMouseEnter={() => setHovered(idx)}
                       onMouseLeave={() => setHovered(null)}
                       onClick={() => onDrillDown(metric)}
@@ -293,12 +291,12 @@ export default function QueryTable({ metrics, onDrillDown, onLoadMore, hasMore =
                           <span title={metric.query_text} className="text-foreground flex-1">
                             {metric.query_text?.substring(0, 80)}...
                           </span>
-                          <button 
-                            className="text-xs text-muted-foreground hover:text-primary transition-colors flex-shrink-0" 
+                          <button
+                            className="text-xs text-muted-foreground hover:text-primary transition-colors flex-shrink-0"
                             onClick={(e) => {
                               e.stopPropagation()
                               navigator.clipboard.writeText(metric.query_text)
-                            }} 
+                            }}
                             title="Copy SQL"
                           >
                             <Copy className="w-3 h-3 inline" />
@@ -309,15 +307,15 @@ export default function QueryTable({ metrics, onDrillDown, onLoadMore, hasMore =
                       <td className="px-3 min-w-[120px]">
                         <div className="flex items-center gap-2">
                           <div className="w-[100px] bg-gray-200 rounded h-3 relative">
-                            <div 
-                              className="absolute left-0 top-0 h-3 rounded bg-primary transition-all duration-300" 
-                              style={{ width: `${Math.min(100, metric.time_percentage)}%` }} 
+                            <div
+                              className="absolute left-0 top-0 h-3 rounded bg-primary transition-all duration-300"
+                              style={{ width: `${Math.min(100, metric.time_percentage)}%` }}
                             />
                             <span className="absolute left-1 top-0 text-xs font-semibold text-foreground" style={{ zIndex: 2 }}>
                               {metric.time_percentage.toFixed(1)}%
                             </span>
                           </div>
-                          <Tooltip 
+                          <Tooltip
                             id={`time-tooltip-${idx}`}
                             content={`This query consumed ${metric.time_percentage.toFixed(1)}% of total DB runtime.`}
                           />
@@ -344,7 +342,7 @@ export default function QueryTable({ metrics, onDrillDown, onLoadMore, hasMore =
                       <td className="px-3">
                         <div className="flex items-center gap-2">
                           {getRowEfficiencyBadge(eff)}
-                          <Tooltip 
+                          <Tooltip
                             id={`eff-tooltip-${idx}`}
                             content="Rows returned / rows read. Lower = wasted effort."
                           />
@@ -357,7 +355,7 @@ export default function QueryTable({ metrics, onDrillDown, onLoadMore, hasMore =
                       <td className="px-3">
                         <div className="flex items-center gap-2">
                           {getEfficiencyScoreBadge(efficiencyScore)}
-                          <Tooltip 
+                          <Tooltip
                             id={`efficiency-tooltip-${idx}`}
                             content="Overall efficiency score based on speed, cache usage, and resource consumption."
                           />
@@ -369,8 +367,8 @@ export default function QueryTable({ metrics, onDrillDown, onLoadMore, hasMore =
                       {/* Drill-down */}
                       <td className="px-3">
                         <div className="flex items-center justify-center">
-                          <button 
-                            className="text-primary flex items-center gap-1 text-xs font-medium hover:text-primary/80 transition-colors" 
+                          <button
+                            className="text-primary flex items-center gap-1 text-xs font-medium hover:text-primary/80 transition-colors"
                             onClick={(e) => {
                               e.stopPropagation()
                               onDrillDown(metric)
@@ -397,7 +395,7 @@ export default function QueryTable({ metrics, onDrillDown, onLoadMore, hasMore =
                 const eff = metric.rows > 0 && metric.shared_blks_read > 0 ? Math.min(100, (metric.rows / (metric.shared_blks_read * 8192 / 100)) * 100) : NaN;
                 const efficiencyScore = getPerformanceScore(metric);
                 const isSlow = isSlowQuery(metric);
-                
+
                 return (
                   <div
                     key={idx}
@@ -414,12 +412,12 @@ export default function QueryTable({ metrics, onDrillDown, onLoadMore, hasMore =
                           </p>
                         </div>
                       </div>
-                      <button 
-                        className="text-muted-foreground hover:text-primary transition-colors flex-shrink-0 ml-2" 
+                      <button
+                        className="text-muted-foreground hover:text-primary transition-colors flex-shrink-0 ml-2"
                         onClick={(e) => {
                           e.stopPropagation()
                           navigator.clipboard.writeText(metric.query_text)
-                        }} 
+                        }}
                         title="Copy SQL"
                       >
                         <Copy className="w-4 h-4" />
@@ -432,9 +430,9 @@ export default function QueryTable({ metrics, onDrillDown, onLoadMore, hasMore =
                         <p className="text-xs text-muted-foreground">% Time</p>
                         <div className="flex items-center gap-2">
                           <div className="w-16 bg-gray-200 rounded h-2 relative">
-                            <div 
-                              className="absolute left-0 top-0 h-2 rounded bg-primary transition-all duration-300" 
-                              style={{ width: `${Math.min(100, metric.time_percentage)}%` }} 
+                            <div
+                              className="absolute left-0 top-0 h-2 rounded bg-primary transition-all duration-300"
+                              style={{ width: `${Math.min(100, metric.time_percentage)}%` }}
                             />
                           </div>
                           <span className="text-sm font-medium">{metric.time_percentage.toFixed(1)}%</span>
@@ -473,8 +471,8 @@ export default function QueryTable({ metrics, onDrillDown, onLoadMore, hasMore =
 
                     {/* Action Button */}
                     <div className="flex justify-end">
-                      <button 
-                        className="text-primary flex items-center gap-1 text-xs font-medium hover:text-primary/80 transition-colors" 
+                      <button
+                        className="text-primary flex items-center gap-1 text-xs font-medium hover:text-primary/80 transition-colors"
                         onClick={(e) => {
                           e.stopPropagation()
                           onDrillDown(metric)
@@ -497,13 +495,13 @@ export default function QueryTable({ metrics, onDrillDown, onLoadMore, hasMore =
             <span className="text-sm text-muted-foreground">Loading more queries...</span>
           </div>
         )}
-        
+
         {/* Empty state */}
         {sorted.length === 0 && (
           <div className="text-center py-8">
             <p className="text-muted-foreground">
-              {activeFilter === 'all' 
-                ? 'No queries available' 
+              {activeFilter === 'all'
+                ? 'No queries available'
                 : 'No queries match current filter; clear to reset.'
               }
             </p>

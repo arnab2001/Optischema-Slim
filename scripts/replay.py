@@ -21,7 +21,10 @@ except ImportError:
     # Fallback for when running from scripts directory
     import os
     def get_database_url():
-        return os.getenv('DATABASE_URL', 'postgresql://optischema:optischema_pass@postgres:5432/optischema')
+        url = os.getenv('DATABASE_URL')
+        if not url:
+            raise RuntimeError('DATABASE_URL is not set')
+        return url
 
 class QueryReplayer:
     def __init__(self, conn):

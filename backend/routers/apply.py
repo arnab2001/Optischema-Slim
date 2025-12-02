@@ -3,8 +3,7 @@ from typing import Dict, Any, List
 import logging
 
 from apply_manager import get_apply_manager
-from audit import AuditService
-from recommendations_db import RecommendationsDB
+from audit_service import AuditService
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +125,7 @@ async def get_applied_changes() -> Dict[str, Any]:
         
         # Fallback: pull from audit logs if in-memory tracker is empty
         if not changes:
-            logs = AuditService.get_audit_logs(action_type="recommendation_applied", limit=100)
+            logs = await AuditService.get_audit_logs(action_type="recommendation_applied", limit=100)
             # Deduplicate by recommendation_id (keep latest)
             latest_by_id = {}
             for log in logs:
@@ -210,7 +209,7 @@ async def get_apply_manager_status() -> Dict[str, Any]:
         
         if not changes:
             # Fallback to audit logs to compute counts
-            logs = AuditService.get_audit_logs(action_type="recommendation_applied", limit=100)
+            logs = await AuditService.get_audit_logs(action_type="recommendation_applied", limit=100)
             # Map to change-like objects
             changes = [{
                 "status": "applied" if (log.get("status") in (None, "", "completed")) else log.get("status"),

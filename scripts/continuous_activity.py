@@ -8,6 +8,7 @@ import asyncio
 import random
 import time
 import logging
+import os
 from datetime import datetime, timedelta
 import asyncpg
 from typing import List, Dict, Any
@@ -16,14 +17,12 @@ from typing import List, Dict, Any
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Database configuration
-DB_CONFIG = {
-    'host': 'localhost',
-    'port': 5433,  # Sandbox port
-    'database': 'sandbox',
-    'user': 'sandbox',
-    'password': 'sandbox_pass'
-}
+def _get_sandbox_url() -> str:
+    # Prefer replica URL for sandbox, else SANDBOX_DATABASE_URL
+    url = os.getenv('REPLICA_DATABASE_URL') or os.getenv('SANDBOX_DATABASE_URL')
+    if not url:
+        raise RuntimeError('REPLICA_DATABASE_URL or SANDBOX_DATABASE_URL is not set')
+    return url
 
 # Business queries that simulate real application activity
 BUSINESS_QUERIES = [
@@ -77,7 +76,7 @@ SLOW_QUERIES = [
 
 async def get_connection() -> asyncpg.Connection:
     """Get a database connection."""
-    return await asyncpg.connect(**DB_CONFIG)
+    return await asyncpg.connect(_get_sandbox_url())
 
 async def execute_query(conn: asyncpg.Connection, query: str, params: List[Any] = None) -> None:
     """Execute a query with error handling."""

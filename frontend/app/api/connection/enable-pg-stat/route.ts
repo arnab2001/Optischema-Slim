@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { mergeTenantHeaders, resolveTenantIdFromRequest } from '@/lib/tenant'
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8000'
 
 export async function POST(request: NextRequest) {
   try {
+    const tenantId = resolveTenantIdFromRequest(request)
     const response = await fetch(`${BACKEND_URL}/api/connection/enable-pg-stat`, {
       method: 'POST',
-      headers: {
+      headers: mergeTenantHeaders(tenantId, {
         'Content-Type': 'application/json',
-      },
+      }),
     })
 
     const data = await response.json()

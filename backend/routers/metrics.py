@@ -3,11 +3,12 @@ Metrics router for OptiSchema backend.
 Provides endpoints for query metrics and performance data.
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Header
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 from analysis.core import calculate_performance_metrics, identify_hot_queries
 from collector import get_metrics_cache
+from tenant_context import resolve_tenant_id
 from connection_manager import connection_manager
 
 router = APIRouter(prefix="/metrics", tags=["metrics"])
@@ -22,6 +23,7 @@ async def get_raw_metrics(
     min_calls: int = Query(1, ge=1, description="Minimum number of calls"),
     min_time: float = Query(0.0, ge=0.0, description="Minimum mean execution time (ms)"),
     search: Optional[str] = Query(None, description="Search query text"),
+    tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")
 ) -> Dict[str, Any]:
     """Return paginated query metrics with filtering and sorting."""
     # Check if we're connected to a database
@@ -37,7 +39,7 @@ async def get_raw_metrics(
             }
         }
     
-    metrics = get_metrics_cache()
+    metrics = get_metrics_cache(tenant_id)
     if not metrics:
         return {
             "queries": [],
@@ -102,9 +104,9 @@ async def get_raw_metrics(
 
 
 @router.get("/summary")
-async def get_metrics_summary() -> Dict[str, Any]:
+async def get_metrics_summary(tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")) -> Dict[str, Any]:
     """Return aggregated metrics summary."""
-    metrics = get_metrics_cache()
+    metrics = get_metrics_cache(tenant_id)
     if not metrics:
         raise HTTPException(status_code=404, detail="No metrics available")
     
@@ -120,9 +122,12 @@ async def get_metrics_summary() -> Dict[str, Any]:
 
 
 @router.get("/hot")
-async def get_hot_queries(limit: int = Query(10, ge=1, le=100)) -> List[Dict[str, Any]]:
+async def get_hot_queries(
+    limit: int = Query(10, ge=1, le=100),
+    tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")
+) -> List[Dict[str, Any]]:
     """Return the most expensive queries."""
-    metrics = get_metrics_cache()
+    metrics = get_metrics_cache(tenant_id)
     if not metrics:
         return []
     
@@ -134,10 +139,11 @@ async def get_hot_queries(limit: int = Query(10, ge=1, le=100)) -> List[Dict[str
 @router.get("/top")
 async def get_top_queries(
     limit: int = Query(10, ge=1, le=100), 
-    sort_by: str = Query("total_time")
+    sort_by: str = Query("total_time"),
+    tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")
 ) -> List[Dict[str, Any]]:
     """Return top queries sorted by specified criteria."""
-    metrics = get_metrics_cache()
+    metrics = get_metrics_cache(tenant_id)
     if not metrics:
         return []
     
@@ -153,9 +159,9 @@ async def get_top_queries(
 
 
 @router.get("/stats")
-async def get_collection_stats() -> Dict[str, Any]:
+async def get_collection_stats(tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")) -> Dict[str, Any]:
     """Return collection statistics and performance info."""
-    metrics = get_metrics_cache()
+    metrics = get_metrics_cache(tenant_id)
     
     if not metrics:
         return {
@@ -190,7 +196,8 @@ async def get_collection_stats() -> Dict[str, Any]:
 @router.get("/historical")
 async def get_historical_metrics(
     time_range: str = Query("1h", description="Time range: 1h, 6h, 24h, 7d"),
-    interval: str = Query("5m", description="Data interval: 1m, 5m, 15m, 1h")
+    interval: str = Query("5m", description="Data interval: 1m, 5m, 15m, 1h"),
+    tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")
 ) -> Dict[str, Any]:
     """Return historical metrics for trend analysis."""
     # For now, generate mock historical data

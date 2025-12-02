@@ -1,9 +1,13 @@
 import asyncio
 import asyncpg
+import os
 
 async def test_connection():
     try:
-        conn = await asyncpg.connect('postgresql://optischema:optischema_pass@postgres:5432/optischema')
+        url = os.getenv('DATABASE_URL')
+        if not url:
+            raise RuntimeError('DATABASE_URL is not set')
+        conn = await asyncpg.connect(url)
         print('Connection successful!')
         await conn.close()
     except Exception as e:

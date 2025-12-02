@@ -8,69 +8,12 @@ import re
 import json
 
 from config import settings
-from recommendations_db import RecommendationsDB
 from sandbox import get_sandbox_connection
+from recommendations_service import RecommendationsService
+from audit_service import AuditService
+from tenant_context import TenantContext
 
 logger = logging.getLogger(__name__)
-
-
-class AuditLogger:
-    """Handles immutable audit logging for all DDL operations."""
-    
-    @staticmethod
-    async def log_operation(conn: asyncpg.Connection, operation_type: str, 
-                          recommendation_id: str, sql_executed: str, 
-                          status: str, details: Dict[str, Any] = None):
-        """
-        Log an operation to the audit trail.
-        
-        Args:
-            conn: Database connection
-            operation_type: 'apply' or 'rollback'
-            recommendation_id: ID of recommendation
-            sql_executed: SQL that was executed
-            status: 'success' or 'error'
-            details: Additional details dictionary
-        """
-        try:
-            audit_record = {
-                'operation_type': operation_type,
-                'recommendation_id': recommendation_id,
-                'sql_executed': sql_executed,
-                'status': status,
-                'timestamp': datetime.utcnow().isoformat(),
-                'details': details or {}
-            }
-            
-            # Create audit table if it doesn't exist
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS optischema_audit_log (
-                    id SERIAL PRIMARY KEY,
-                    operation_type VARCHAR(20) NOT NULL,
-                    recommendation_id VARCHAR(255) NOT NULL,
-                    sql_executed TEXT NOT NULL,
-                    status VARCHAR(20) NOT NULL,
-                    timestamp TIMESTAMP NOT NULL,
-                    details JSONB,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            
-            # Insert audit record
-            await conn.execute("""
-                INSERT INTO optischema_audit_log 
-                (operation_type, recommendation_id, sql_executed, status, timestamp, details)
-                VALUES ($1, $2, $3, $4, $5, $6)
-            """, 
-            operation_type, recommendation_id, sql_executed, 
-            status, datetime.fromisoformat(audit_record['timestamp']), 
-            json.dumps(details) if details else None)
-            
-            logger.info(f"Audit log entry created: {operation_type} for {recommendation_id}")
-            
-        except Exception as e:
-            logger.error(f"Failed to write audit log: {e}")
-            # Don't fail the operation if audit logging fails
 
 
 class ApplyManager:
@@ -78,7 +21,6 @@ class ApplyManager:
     
     def __init__(self):
         self._applied_changes: Dict[str, Dict[str, Any]] = {}
-        self.audit_logger = AuditLogger()
     
     def _validate_sql_safety(self, sql: str) -> bool:
         """
@@ -162,8 +104,8 @@ class ApplyManager:
         """
         logger.info(f"Applying recommendation: {recommendation_id}")
         
-        # Get recommendation details
-        recommendation = RecommendationsDB.get_recommendation(recommendation_id)
+        # Get recommendation details (tenant-scoped)
+        recommendation = await RecommendationsService.get_recommendation(recommendation_id)
         if not recommendation:
             raise ValueError(f"Recommendation {recommendation_id} not found")
         
@@ -232,25 +174,41 @@ class ApplyManager:
                 # Store in memory (in production, this would be in a database)
                 self._applied_changes[recommendation_id] = change_record
                 
-                # Update recommendation status
-                RecommendationsDB.update_recommendation_status(
+                # Update recommendation status in Postgres
+                await RecommendationsService.update_recommendation(
                     recommendation_id,
-                    'applied',
-                    applied=True,
-                    applied_at=datetime.utcnow().isoformat()
-                )
-                
-                # Log to audit trail
-                await self.audit_logger.log_operation(
-                    conn, 'apply', recommendation_id, sql_fix, 'success',
                     {
-                        'schema_name': schema_name,
-                        'rollback_sql': change_record['rollback_sql'],
-                        'recommendation_title': recommendation.get('title', ''),
-                        'risk_level': recommendation.get('risk_level', 'unknown'),
-                        'original_sql': recommendation.get('sql_fix') or recommendation.get('original_sql') or recommendation.get('query_text') or ''
+                        'status': 'applied',
+                        'applied': True,
+                        'applied_at': datetime.utcnow(),
                     }
                 )
+                
+                # Log to tenant-aware audit trail
+                try:
+                    original_sql = (
+                        recommendation.get('sql_fix')
+                        or recommendation.get('original_sql')
+                        or recommendation.get('query_text')
+                        or ''
+                    )
+                    await AuditService.log_action(
+                        action_type='recommendation_applied',
+                        recommendation_id=recommendation_id,
+                        details={
+                            'schema_name': schema_name,
+                            'rollback_sql': change_record['rollback_sql'],
+                            'recommendation_title': recommendation.get('title', ''),
+                            'risk_level': recommendation.get('risk_level', 'unknown'),
+                            'sql_executed': sql_fix,
+                            'original_sql': original_sql,
+                            'environment': 'sandbox',
+                        },
+                        risk_level=recommendation.get('risk_level', 'unknown'),
+                        status='completed',
+                    )
+                except Exception as audit_err:
+                    logger.error(f"Failed to write audit log: {audit_err}")
                 
                 logger.info(f"Successfully applied recommendation: {recommendation_id}")
                 
@@ -267,15 +225,16 @@ class ApplyManager:
         except Exception as e:
             logger.error(f"Failed to apply recommendation {recommendation_id}: {e}")
             
-            # Log failure to audit trail
-            if conn:
-                try:
-                    await self.audit_logger.log_operation(
-                        conn, 'apply', recommendation_id, sql_fix, 'error',
-                        {'error_message': str(e)}
-                    )
-                except Exception:
-                    pass  # Don't fail on audit logging errors
+            # Log failure to audit trail (tenant-aware)
+            try:
+                await AuditService.log_action(
+                    action_type='recommendation_apply_failed',
+                    recommendation_id=recommendation_id,
+                    details={'error_message': str(e), 'sql_attempted': sql_fix},
+                    status='failed',
+                )
+            except Exception:
+                pass  # Don't fail on audit logging errors
             
             raise RuntimeError(f"Failed to apply recommendation: {e}")
         
@@ -351,23 +310,32 @@ class ApplyManager:
                 change_record['status'] = 'rolled_back'
                 change_record['rolled_back_at'] = datetime.utcnow().isoformat()
                 
-                # Update recommendation status
-                RecommendationsDB.update_recommendation_status(
+                # Update recommendation status in Postgres
+                await RecommendationsService.update_recommendation(
                     recommendation_id,
-                    'active',
-                    applied=False,
-                    applied_at=None
+                    {
+                        'status': 'rolled_back',
+                        'applied': False,
+                        'applied_at': None,
+                    }
                 )
                 
                 # Log to audit trail
-                await self.audit_logger.log_operation(
-                    conn, 'rollback', recommendation_id, rollback_sql, 'success',
-                    {
-                        'original_apply_schema': schema_name,
-                        'original_sql': change_record.get('sql_executed', ''),
-                        'applied_at': change_record.get('applied_at', '')
-                    }
-                )
+                try:
+                    await AuditService.log_action(
+                        action_type='recommendation_rolled_back',
+                        recommendation_id=recommendation_id,
+                        details={
+                            'original_apply_schema': schema_name,
+                            'sql_executed': rollback_sql,
+                            'original_sql': change_record.get('sql_executed', ''),
+                            'applied_at': change_record.get('applied_at', ''),
+                            'environment': 'sandbox',
+                        },
+                        status='completed',
+                    )
+                except Exception as audit_err:
+                    logger.error(f"Failed to write rollback audit log: {audit_err}")
                 
                 logger.info(f"Successfully rolled back recommendation: {recommendation_id}")
                 
@@ -383,14 +351,15 @@ class ApplyManager:
             logger.error(f"Failed to rollback recommendation {recommendation_id}: {e}")
             
             # Log failure to audit trail
-            if conn:
-                try:
-                    await self.audit_logger.log_operation(
-                        conn, 'rollback', recommendation_id, rollback_sql, 'error',
-                        {'error_message': str(e)}
-                    )
-                except Exception:
-                    pass  # Don't fail on audit logging errors
+            try:
+                await AuditService.log_action(
+                    action_type='recommendation_rollback_failed',
+                    recommendation_id=recommendation_id,
+                    details={'error_message': str(e), 'sql_attempted': rollback_sql},
+                    status='failed',
+                )
+            except Exception:
+                pass  # Don't fail on audit logging errors
             
             raise RuntimeError(f"Failed to rollback recommendation: {e}")
         
@@ -403,43 +372,25 @@ class ApplyManager:
                     pass
     
     async def get_audit_trail(self, limit: int = 100) -> List[Dict[str, Any]]:
-        """Get the audit trail of all operations."""
-        conn = None
+        """Get the audit trail of all operations (tenant-scoped)."""
         try:
-            conn = await get_sandbox_connection()
-            
-            # Get audit records
-            records = await conn.fetch("""
-                SELECT operation_type, recommendation_id, sql_executed, status, 
-                       timestamp, details, created_at
-                FROM optischema_audit_log 
-                ORDER BY created_at DESC 
-                LIMIT $1
-            """, limit)
-            
-            return [
-                {
-                    'operation_type': record['operation_type'],
-                    'recommendation_id': record['recommendation_id'],
-                    'sql_executed': record['sql_executed'],
-                    'status': record['status'],
-                    'timestamp': record['timestamp'].isoformat(),
-                    'details': json.loads(record['details']) if record['details'] else {},
-                    'created_at': record['created_at'].isoformat()
-                }
-                for record in records
-            ]
-            
+            logs = await AuditService.get_audit_logs(limit=limit)
+            normalized: List[Dict[str, Any]] = []
+            for log in logs:
+                details = log.get('details') or {}
+                normalized.append({
+                    'operation_type': log.get('action_type', ''),
+                    'recommendation_id': log.get('recommendation_id'),
+                    'sql_executed': details.get('sql_executed', ''),
+                    'status': log.get('status', ''),
+                    'timestamp': log.get('created_at'),
+                    'details': details,
+                    'created_at': log.get('created_at'),
+                })
+            return normalized
         except Exception as e:
             logger.error(f"Failed to retrieve audit trail: {e}")
             return []
-        
-        finally:
-            if conn:
-                try:
-                    await conn.close()
-                except Exception:
-                    pass
     
     async def get_applied_changes(self) -> List[Dict[str, Any]]:
         """Get list of all applied changes."""
@@ -492,10 +443,18 @@ class ApplyManager:
                                 cleaned_count += 1
                                 
                                 # Log cleanup to audit trail
-                                await self.audit_logger.log_operation(
-                                    conn, 'cleanup', 'system', f"DROP SCHEMA {schema_name} CASCADE", 'success',
-                                    {'schema_age_hours': (int(datetime.utcnow().timestamp()) - timestamp) / 3600}
-                                )
+                                try:
+                                    await AuditService.log_action(
+                                        action_type='cleanup',
+                                        recommendation_id='system',
+                                        details={
+                                            'ddl_executed': f"DROP SCHEMA {schema_name} CASCADE",
+                                            'schema_age_hours': (int(datetime.utcnow().timestamp()) - timestamp) / 3600,
+                                        },
+                                        status='completed',
+                                    )
+                                except Exception:
+                                    pass
                                 
                 except (ValueError, IndexError):
                     logger.warning(f"Could not parse timestamp from schema: {schema_name}")

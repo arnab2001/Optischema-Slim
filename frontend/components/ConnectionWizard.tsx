@@ -24,7 +24,7 @@ export default function ConnectionWizard({ isOpen, onClose, onConnect, currentCo
     port: currentConfig?.port || '5432',
     database: currentConfig?.database || 'optischema',
     username: currentConfig?.username || 'optischema',
-    password: currentConfig?.password || 'optischema_pass',
+    password: currentConfig?.password || '',
     ssl: currentConfig?.ssl || false,
     connection_string: currentConfig?.connection_string || ''
   })
@@ -149,7 +149,7 @@ export default function ConnectionWizard({ isOpen, onClose, onConnect, currentCo
                 placeholder="postgresql://user:pass@host:port/db"
               />
               <p className="text-xs text-gray-500 mt-1">
-                Example: <code>postgresql://optischema:optischema_pass@postgres:5432/optischema</code>
+                Example: <code>postgresql://user:password@postgres:5432/optischema</code>
               </p>
             </div>
           ) : (

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { mergeTenantHeaders, resolveTenantIdFromRequest } from '@/lib/tenant'
 
 export async function POST(request: Request) {
   try {
@@ -15,11 +16,12 @@ export async function POST(request: Request) {
       ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/suggestions/apply`
       : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/suggestions/apply`;
 
+    const tenantId = resolveTenantIdFromRequest(request)
     const response = await fetch(endpoint, {
       method: 'POST',
-      headers: {
+      headers: mergeTenantHeaders(tenantId, {
         'Content-Type': 'application/json',
-      },
+      }),
       body: JSON.stringify({ recommendation_id, action })
     })
     

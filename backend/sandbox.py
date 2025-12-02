@@ -12,45 +12,18 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
-# Sandbox database configuration - using dedicated sandbox database for safe testing
-SANDBOX_CONFIG = {
-    'host': 'postgres_sandbox',  # Use dedicated sandbox PostgreSQL container
-    'port': 5432,
-    'database': 'sandbox',  # Use sandbox database
-    'user': 'sandbox',
-    'password': 'sandbox_pass'
-}
-
-# Alternative: Use localhost if running outside Docker
-LOCAL_SANDBOX_CONFIG = {
-    'host': 'localhost',
-    'port': 5433,  # Different port for sandbox
-    'database': 'sandbox',
-    'user': 'sandbox',
-    'password': 'sandbox_pass'
-}
-
-
 async def get_sandbox_connection() -> asyncpg.Connection:
     """Get connection to sandbox database."""
     try:
-        # Try main database first (for Docker environment)
-        try:
-            conn = await asyncpg.connect(**SANDBOX_CONFIG)
-            logger.info("Connected to main database for sandbox testing")
-            return conn
-        except Exception as e:
-            logger.warning(f"Failed to connect to main database: {e}")
-            
-            # Fallback to localhost (for local development)
-            try:
-                conn = await asyncpg.connect(**LOCAL_SANDBOX_CONFIG)
-                logger.info("Connected to localhost for sandbox testing")
-                return conn
-            except Exception as e2:
-                logger.error(f"Failed to connect to localhost: {e2}")
-                raise Exception(f"Sandbox connection failed. Main DB: {e}, Localhost: {e2}")
-                
+        # Prefer replica URL if provided, else sandbox URL
+        sandbox_url = settings.replica_database_url or settings.sandbox_database_url
+        if not sandbox_url:
+            raise RuntimeError("No sandbox/replica database URL configured. Set REPLICA_DATABASE_URL or SANDBOX_DATABASE_URL.")
+
+        conn = await asyncpg.connect(sandbox_url)
+        logger.info("Connected to sandbox database via configured URL")
+        return conn
+        
     except Exception as e:
         logger.error(f"Failed to connect to sandbox: {e}")
         raise

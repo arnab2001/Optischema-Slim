@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server'
+import { mergeTenantHeaders, resolveTenantIdFromRequest } from '@/lib/tenant'
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
+    const tenantId = resolveTenantIdFromRequest(request)
     const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/suggestions/generate`, {
-      method: 'POST'
+      method: 'POST',
+      headers: mergeTenantHeaders(tenantId),
     })
     const data = await response.json()
     return NextResponse.json(data)

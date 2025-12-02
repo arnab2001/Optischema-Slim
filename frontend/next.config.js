@@ -3,7 +3,7 @@ const nextConfig = {
   async rewrites() {
     // Use Docker service name for containerized environment
     const backendUrl = 'http://optischema-api:8000';
-    
+
     return [
       {
         source: '/api/metrics/raw',

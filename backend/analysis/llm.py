@@ -1,23 +1,17 @@
 """
 Multi-model LLM integration for OptiSchema backend.
-Supports Gemini (Google) and DeepSeek for query analysis and recommendations.
+Supports Gemini, DeepSeek, and Ollama (Local) via provider pattern.
 """
 
-import os
 import logging
 import json
-import aiohttp
 from typing import Dict, Any, Optional
 from config import settings
 from analysis.core import fingerprint_query
-from cache import make_cache_key, get_cache, set_cache
+from tenant_cache import make_cache_key, get_cache, set_cache
+from analysis.providers import LLMFactory
 
 logger = logging.getLogger(__name__)
-
-# Model configuration
-GEMINI_API_KEY = settings.gemini_api_key
-DEEPSEEK_API_KEY = settings.deepseek_api_key
-ACTIVE_MODEL = settings.llm_provider
 
 # Prompt templates
 EXPLAIN_PLAN_PROMPT = """
@@ -48,112 +42,57 @@ Original Query:
 """
 
 RECOMMENDATION_PROMPT = """
-You are a PostgreSQL tuning assistant. Given the following query metrics and analysis, generate a specific, actionable recommendation to improve performance.
+You are a PostgreSQL performance expert. Given the following query metrics and analysis, generate a specific, actionable recommendation to improve performance.
 
-**Critical Requirements:**
-1. For HIGH-IMPACT, LOW-RISK optimizations (missing indexes, redundant queries), provide executable SQL
-2. Only suggest CREATE INDEX CONCURRENTLY, ALTER SYSTEM, or SET commands for safety
-3. Always include rollback_sql for any sql_fix provided
-4. Be transparent about data source and impact assessment
+**Goal:** Identify the most effective optimization, whether it's an index, query rewrite, schema change, or configuration tuning.
+
+**Optimization Categories:**
+1. **Index Optimization**: Creating/dropping indexes (High Impact, Low Risk)
+2. **Query Rewrite**: Modifying SQL structure (High Impact, Medium Risk)
+3. **Schema Design**: Partitioning, normalization, data types (High Impact, High Risk)
+4. **Configuration**: Tuning PostgreSQL parameters (Medium Impact, Low Risk)
+5. **Maintenance**: VACUUM, ANALYZE, reindexing (Medium Impact, Low Risk)
 
 **Response Format (JSON):**
 ```json
 {{
-  "title": "Short, descriptive title (no markdown formatting)",
-  "description": "Detailed explanation with problem identification, root cause analysis, specific steps, and expected benefits",
-  "sql_fix": "CREATE INDEX CONCURRENTLY idx_table_column ON table(column); -- Only if HIGH-impact, LOW-risk",
-  "rollback_sql": "DROP INDEX CONCURRENTLY idx_table_column; -- Required if sql_fix provided",
+  "title": "Short, descriptive title (no markdown)",
+  "description": "Detailed explanation: problem identification, root cause, specific steps, and expected benefits.",
+  "recommendation_type": "index|rewrite|schema|config|maintenance",
+  "sql_fix": "Executable SQL for the fix (if applicable and safe)",
+  "rollback_sql": "SQL to revert the fix (required if sql_fix provided)",
   "confidence": 85,
   "estimated_improvement": "15%",
-  "risk_level": "Low"
+  "risk_level": "Low|Medium|High"
 }}
 ```
 
-**SQL Fix Guidelines:**
-- Only for clear, high-impact optimizations (missing indexes on WHERE/JOIN columns)
-- Use CREATE INDEX CONCURRENTLY for safety (non-blocking)
-- Include proper index naming: idx_tablename_columnname
-- Provide accurate rollback_sql
-- Skip sql_fix for advisory-only recommendations
+**Guidelines for sql_fix:**
+- **Indexes**: ALWAYS provide `CREATE INDEX CONCURRENTLY` (safe).
+- **Configuration**: Provide `ALTER SYSTEM SET` or `SET` commands.
+- **Query Rewrites**: Provide the *rewritten SELECT query* as the `sql_fix` (if it can be run as a test).
+- **Schema/Maintenance**: Provide SQL if safe, otherwise leave null (advisory only).
 
-**Data Analysis Guidelines:**
-1. If actual_metrics available: Use precise values (execution time, calls, cache hits)
-2. If no actual_metrics: State "Based on query pattern analysis"
-3. Always mention data source used for analysis
-4. For execution plans: Focus on sequential scans, missing indexes, large sorts
+**Safety Rules:**
+- Use `CONCURRENTLY` for index operations.
+- Do NOT suggest `DROP TABLE` or destructive data operations.
+
+**Data Analysis:**
+- Focus on sequential scans, high CPU/IO, missing indexes, and complex joins.
+- If `actual_metrics` exist, use them to justify the impact.
 
 Query Data:
 {query_data}
-
-**Examples of HIGH-impact, LOW-risk fixes:**
-- Sequential scans with WHERE clauses → CREATE INDEX CONCURRENTLY
-- Missing indexes on JOIN columns → CREATE INDEX CONCURRENTLY
-- Unindexed ORDER BY columns → CREATE INDEX CONCURRENTLY
-
-**Examples requiring advisory-only (no sql_fix):**
-- Complex query rewrites
-- Schema changes
-- Application-level optimizations
-- Multi-table restructuring
 """
 
-async def call_gemini_api(prompt: str, max_tokens: int = 512) -> str:
-    """Call Gemini API."""
-    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
-    headers = {
-        "Content-Type": "application/json",
-        "X-goog-api-key": GEMINI_API_KEY
-    }
-    data = {
-        "contents": [{
-            "parts": [{"text": prompt}]
-        }],
-        "generationConfig": {
-            "maxOutputTokens": max_tokens,
-            "temperature": 0.2
-        }
-    }
-
-    async with aiohttp.ClientSession() as session:
-        async with session.post(url, headers=headers, json=data) as response:
-            if response.status == 200:
-                result = await response.json()
-                return result["candidates"][0]["content"]["parts"][0]["text"].strip()
-            else:
-                error_text = await response.text()
-                raise Exception(f"Gemini API error: {response.status} - {error_text}")
-
-async def call_deepseek_api(prompt: str, max_tokens: int = 512) -> str:
-    """Call DeepSeek API."""
-    url = "https://api.deepseek.com/v1/chat/completions"
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {DEEPSEEK_API_KEY}"
-    }
-    data = {
-        "model": "deepseek-chat",
-        "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": max_tokens,
-        "temperature": 0.2
-    }
-
-    async with aiohttp.ClientSession() as session:
-        async with session.post(url, headers=headers, json=data) as response:
-            if response.status == 200:
-                result = await response.json()
-                return result["choices"][0]["message"]["content"].strip()
-            else:
-                error_text = await response.text()
-                raise Exception(f"DeepSeek API error: {response.status} - {error_text}")
-
 async def call_llm_api(prompt: str, max_tokens: int = 512) -> str:
-    """Call the active LLM API."""
-    if ACTIVE_MODEL == "gemini":
-        return await call_gemini_api(prompt, max_tokens)
-    elif ACTIVE_MODEL == "deepseek":
-        return await call_deepseek_api(prompt, max_tokens)
-    else:
-        raise ValueError(f"Unknown model: {ACTIVE_MODEL}")
+    """Call the active LLM provider."""
+    try:
+        provider = LLMFactory.get_provider()
+        return await provider.generate(prompt, max_tokens)
+    except Exception as e:
+        logger.error(f"LLM generation failed: {e}")
+        raise
 
 # Core AI functions
 async def explain_plan(plan_json: Dict[str, Any], query_text: Optional[str] = None) -> str:
@@ -174,11 +113,11 @@ async def explain_plan(plan_json: Dict[str, Any], query_text: Optional[str] = No
         explanation = await call_llm_api(prompt, max_tokens=512)
         if cache_key:
             set_cache(cache_key, explanation)
-        logger.info(f"{ACTIVE_MODEL.title()} plan explanation generated.")
+        logger.info(f"Plan explanation generated using {settings.llm_provider}.")
         return explanation
     except Exception as e:
-        logger.error(f"{ACTIVE_MODEL.title()} plan explanation failed: {e}")
-        return f"[{ACTIVE_MODEL.title()} explanation unavailable]"
+        logger.error(f"Plan explanation failed: {e}")
+        return f"[Explanation unavailable: {str(e)}]"
 
 async def rewrite_query(sql: str) -> str:
     """
@@ -195,11 +134,14 @@ async def rewrite_query(sql: str) -> str:
     try:
         optimized_sql = await call_llm_api(prompt, max_tokens=256)
         set_cache(cache_key, optimized_sql)
-        logger.info(f"{ACTIVE_MODEL.title()} query rewrite generated.")
+        logger.info(f"Query rewrite generated using {settings.llm_provider}.")
         return optimized_sql
     except Exception as e:
-        logger.error(f"{ACTIVE_MODEL.title()} query rewrite failed: {e}")
+        logger.error(f"Query rewrite failed: {e}")
         return sql
+
+from database_context_service import DatabaseContextService
+from connection_manager import connection_manager
 
 async def generate_recommendation(query_data: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -218,6 +160,25 @@ async def generate_recommendation(query_data: Dict[str, Any]) -> Dict[str, Any]:
             return json.loads(cached)
         except Exception:
             pass
+            
+    # 🧠 ENHANCEMENT: Gather Rich Database Context
+    try:
+        pool = await connection_manager.get_pool()
+        if pool:
+            # Extract SQL from query_data
+            sql = query_data.get('query_text', '')
+            if sql:
+                logger.info("Gathering database context for AI...")
+                context = await DatabaseContextService.get_query_context(pool, sql)
+                formatted_context = DatabaseContextService.format_context_for_prompt(context)
+                
+                # Add context to query_data for the prompt
+                query_data['schema_context'] = formatted_context['schema_context']
+                query_data['index_context'] = formatted_context['existing_indexes']
+                query_data['statistics_context'] = formatted_context['table_statistics']
+    except Exception as e:
+        logger.warning(f"Failed to gather database context: {e}")
+
     prompt = RECOMMENDATION_PROMPT.format(query_data=query_data)
     try:
         content = await call_llm_api(prompt, max_tokens=1024)
@@ -250,6 +211,7 @@ async def generate_recommendation(query_data: Dict[str, Any]) -> Dict[str, Any]:
             result = {
                 "title": result.get("title", "Optimization Recommendation"),
                 "description": result.get("description", "No description provided"),
+                "recommendation_type": result.get("recommendation_type", "optimization"),
                 "sql_fix": result.get("sql_fix"),
                 "rollback_sql": result.get("rollback_sql"),
                 "confidence": result.get("confidence", 75),
@@ -287,16 +249,16 @@ async def generate_recommendation(query_data: Dict[str, Any]) -> Dict[str, Any]:
             }
         
         set_cache(cache_key, json.dumps(result))
-        logger.info(f"{ACTIVE_MODEL.title()} recommendation generated with executable SQL: {bool(result.get('sql_fix'))}")
+        logger.info(f"Recommendation generated using {settings.llm_provider}.")
         return result
     except Exception as e:
-        logger.error(f"{ACTIVE_MODEL.title()} recommendation failed: {e}")
+        logger.error(f"Recommendation generation failed: {e}")
         return {
-            "title": f"[{ACTIVE_MODEL.title()} recommendation unavailable]",
-            "description": str(e),
+            "title": f"[Recommendation unavailable]",
+            "description": f"Error generating recommendation: {str(e)}",
             "sql_fix": None,
             "rollback_sql": None,
             "confidence": 0,
             "estimated_improvement": "Unknown",
             "risk_level": "Unknown"
-        } 
+        }

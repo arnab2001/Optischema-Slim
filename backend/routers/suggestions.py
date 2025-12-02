@@ -10,18 +10,19 @@ import uuid
 from analysis.pipeline import get_recommendations_cache, run_analysis_pipeline
 from recommendations import apply_recommendation
 from sandbox import run_benchmark_test, get_sandbox_connection
-from simple_recommendations import SimpleRecommendationStore
+from recommendations_service import RecommendationsService
+from audit_service import AuditService
 
 router = APIRouter(prefix="/suggestions", tags=["suggestions"])
 
 
-def _seed_minimum_recommendations(min_count: int = 6) -> int:
-    """Ensure there are at least `min_count` recommendations in the simple store.
+async def _seed_minimum_recommendations(min_count: int = 6) -> int:
+    """Ensure there are at least `min_count` recommendations in the service.
 
     Returns number of recommendations added.
     """
     try:
-        current = SimpleRecommendationStore.get_all_recommendations()
+        current = await RecommendationsService.get_all_recommendations()
         if len(current) >= min_count:
             return 0
 
@@ -122,10 +123,10 @@ def _seed_minimum_recommendations(min_count: int = 6) -> int:
 
         added = 0
         for seed in seeds:
-            if SimpleRecommendationStore.get_count() >= min_count:
+            if await RecommendationsService.get_count() >= min_count:
                 break
             try:
-                if SimpleRecommendationStore.add_recommendation(seed):
+                if await RecommendationsService.add_recommendation(seed):
                     added += 1
             except Exception:
                 # Continue seeding others even if one fails
@@ -136,22 +137,21 @@ def _seed_minimum_recommendations(min_count: int = 6) -> int:
 
 @router.get("/latest")
 async def get_latest_suggestions() -> List[Dict[str, Any]]:
-    """Return the latest recommendations from simple store."""
+    """Return the latest recommendations from service."""
     import logging
     logger = logging.getLogger(__name__)
     
     try:
-        from simple_recommendations import SimpleRecommendationStore
-        recs = SimpleRecommendationStore.get_all_recommendations()
+        recs = await RecommendationsService.get_all_recommendations()
         # Seed fallback if empty or too few
         if len(recs) < 6:
-            added = _seed_minimum_recommendations(6)
+            added = await _seed_minimum_recommendations(6)
             if added > 0:
-                recs = SimpleRecommendationStore.get_all_recommendations()
-        logger.info(f"✅ Returning {len(recs)} recommendations from simple store")
+                recs = await RecommendationsService.get_all_recommendations()
+        logger.info(f"✅ Returning {len(recs)} recommendations from service")
         return recs
     except Exception as e:
-        logger.error(f"Failed to get recommendations from simple store: {e}")
+        logger.error(f"Failed to get recommendations from service: {e}")
         return []
 
 
@@ -159,7 +159,7 @@ async def get_latest_suggestions() -> List[Dict[str, Any]]:
 async def get_specific_suggestion(recommendation_id: str) -> Dict[str, Any]:
     """Return a specific recommendation by ID from simple store."""
     try:
-        rec = SimpleRecommendationStore.get_recommendation(recommendation_id)
+        rec = await RecommendationsService.get_recommendation(recommendation_id)
         if rec:
             return rec
         else:
@@ -167,7 +167,7 @@ async def get_specific_suggestion(recommendation_id: str) -> Dict[str, Any]:
     except Exception as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Failed to get recommendation from simple store: {e}")
+        logger.error(f"Failed to get recommendation from service: {e}")
         raise HTTPException(status_code=404, detail=f"Recommendation {recommendation_id} not found")
 
 
@@ -175,8 +175,8 @@ async def get_specific_suggestion(recommendation_id: str) -> Dict[str, Any]:
 async def clear_recommendations():
     """Clear all recommendations (for testing)."""
     try:
-        SimpleRecommendationStore.clear_all()
-        return {"message": "✅ All recommendations cleared", "success": True}
+        cleared = await RecommendationsService.clear_all()
+        return {"message": "✅ All recommendations cleared", "cleared": cleared, "success": True}
     except Exception as e:
         return {"message": f"❌ Failed to clear recommendations: {e}", "success": False}
 
@@ -185,7 +185,7 @@ async def clear_recommendations():
 async def get_recommendations_stats():
     """Get recommendation storage statistics."""
     try:
-        stats = SimpleRecommendationStore.get_stats()
+        stats = await RecommendationsService.get_stats()
         return stats
     except Exception as e:
         return {"error": str(e), "success": False}
@@ -198,15 +198,15 @@ async def apply_suggestion(request: Dict[str, Any]) -> Dict[str, Any]:
     if not recommendation_id:
         raise HTTPException(status_code=400, detail="Missing recommendation_id")
     
-    # Get recommendation from simple store
+    # Get recommendation from service
     try:
-        recommendation = SimpleRecommendationStore.get_recommendation(recommendation_id)
+        recommendation = await RecommendationsService.get_recommendation(recommendation_id)
         if not recommendation:
             raise HTTPException(status_code=404, detail=f"Recommendation {recommendation_id} not found")
     except Exception as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Failed to get recommendation from simple store: {e}")
+        logger.error(f"Failed to get recommendation from service: {e}")
         raise HTTPException(status_code=404, detail=f"Recommendation {recommendation_id} not found")
     
     try:
@@ -228,15 +228,15 @@ async def apply_and_test_suggestion(request: Dict[str, Any]) -> Dict[str, Any]:
     if not recommendation_id:
         raise HTTPException(status_code=400, detail="Missing recommendation_id")
     
-    # Get recommendation from simple store
+    # Get recommendation from service
     try:
-        recommendation = SimpleRecommendationStore.get_recommendation(recommendation_id)
+        recommendation = await RecommendationsService.get_recommendation(recommendation_id)
         if not recommendation:
             raise HTTPException(status_code=404, detail=f"Recommendation {recommendation_id} not found")
     except Exception as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Failed to get recommendation from simple store: {e}")
+        logger.error(f"Failed to get recommendation from service: {e}")
         raise HTTPException(status_code=404, detail=f"Recommendation {recommendation_id} not found")
     
     # Check if it has executable SQL
@@ -458,7 +458,7 @@ async def apply_and_test_suggestion(request: Dict[str, Any]) -> Dict[str, Any]:
             applied_at = apply_result.get("applied_at", datetime.utcnow().isoformat())
             # Normalize SQL to ensure rollback can be generated reliably
             original_sql = recommendation.get("sql_fix", "")
-            SimpleRecommendationStore.update_recommendation(str(recommendation_id), {
+            await RecommendationsService.update_recommendation(str(recommendation_id), {
                 "applied": True,
                 "applied_at": applied_at,
                 "status": "applied",
@@ -472,10 +472,9 @@ async def apply_and_test_suggestion(request: Dict[str, Any]) -> Dict[str, Any]:
             
             # Log to audit trail
             try:
-                from audit import AuditService
                 # Provide a meaningful SQL for audit even when no DDL executed
                 original_sql = recommendation.get("sql_fix") or recommendation.get("original_sql") or recommendation.get("query_text") or ""
-                AuditService.log_action(
+                await AuditService.log_action(
                     action_type="recommendation_applied",
                     recommendation_id=recommendation_id,
                     before_metrics=baseline_metrics,
@@ -519,9 +518,8 @@ async def apply_and_test_suggestion(request: Dict[str, Any]) -> Dict[str, Any]:
         
         # Log failed attempt to audit trail
         try:
-            from audit import AuditService
             original_sql = recommendation.get("sql_fix") or recommendation.get("original_sql") or recommendation.get("query_text") or ""
-            AuditService.log_action(
+            await AuditService.log_action(
                 action_type="recommendation_apply_failed",
                 recommendation_id=recommendation_id,
                 details={
@@ -653,6 +651,9 @@ async def sample_tables_to_sandbox(source_config: Dict[str, Any], tables: List[s
         # Connect to sandbox database
         sandbox_conn = await get_sandbox_connection()
         
+        # Create sandbox schema if it doesn't exist
+        await sandbox_conn.execute("CREATE SCHEMA IF NOT EXISTS sandbox")
+        
         # Debug: Log sandbox connection details
         try:
             sandbox_info = await sandbox_conn.fetchrow("SELECT current_database(), current_user, inet_server_addr(), inet_server_port()")
@@ -699,7 +700,7 @@ async def sample_tables_to_sandbox(source_config: Dict[str, Any], tables: List[s
                     """, target_schema, table)
                     
                     if columns:
-                        # Create table in sandbox
+                        # Create table in sandbox schema
                         column_defs = []
                         for col in columns:
                             col_def = f'"{col["column_name"]}" {col["data_type"]}'
@@ -707,16 +708,16 @@ async def sample_tables_to_sandbox(source_config: Dict[str, Any], tables: List[s
                                 col_def += " NOT NULL"
                             column_defs.append(col_def)
                         
-                        # Drop and recreate table with explicit transaction commit
-                        logger.info(f"Creating table '{table}' in sandbox...")
+                        # Drop and recreate table in sandbox schema
+                        logger.info(f"Creating table '{table}' in sandbox schema...")
                         
                         # Use explicit transaction to ensure commit
                         async with sandbox_conn.transaction():
-                            await sandbox_conn.execute(f'DROP TABLE IF EXISTS "{table}"')
-                            create_sql = f'CREATE TABLE "{table}" ({", ".join(column_defs)})'
+                            await sandbox_conn.execute(f'DROP TABLE IF EXISTS sandbox."{table}"')
+                            create_sql = f'CREATE TABLE sandbox."{table}" ({", ".join(column_defs)})'
                             await sandbox_conn.execute(create_sql)
                         
-                        logger.info(f"Successfully created table '{table}' in sandbox")
+                        logger.info(f"Successfully created table '{table}' in sandbox schema")
                         
                         # Verify table creation immediately (outside transaction)
                         table_check = await sandbox_conn.fetchval("""
@@ -725,7 +726,7 @@ async def sample_tables_to_sandbox(source_config: Dict[str, Any], tables: List[s
                                 WHERE table_name = $1 AND table_schema = 'sandbox'
                             )
                         """, table)
-                        logger.info(f"Table '{table}' exists in sandbox after creation: {table_check}")
+                        logger.info(f"Table '{table}' exists in sandbox schema after creation: {table_check}")
                         
                         # Sample data (limit to 1000 rows for performance)
                         sample_sql = f'SELECT * FROM "{target_schema}"."{table}" LIMIT 1000'
@@ -736,7 +737,7 @@ async def sample_tables_to_sandbox(source_config: Dict[str, Any], tables: List[s
                             columns_list = [col["column_name"] for col in columns]
                             placeholders = ",".join([f"${i+1}" for i in range(len(columns_list))])
                             columns_quoted = [f'"{col}"' for col in columns_list]
-                            insert_sql = f'INSERT INTO "{table}" ({",".join(columns_quoted)}) VALUES ({placeholders})'
+                            insert_sql = f'INSERT INTO sandbox."{table}" ({",".join(columns_quoted)}) VALUES ({placeholders})'
                             
                             async with sandbox_conn.transaction():
                                 for row in rows:
@@ -781,12 +782,12 @@ async def benchmark_suggestion(request: Dict[str, Any]) -> Dict[str, Any]:
     if not recommendation_id:
         raise HTTPException(status_code=400, detail="Missing recommendation_id")
     
-    # Get recommendation from simple store
+    # Get recommendation from service
     try:
-        recommendation = SimpleRecommendationStore.get_recommendation(recommendation_id)
+        recommendation = await RecommendationsService.get_recommendation(recommendation_id)
         if not recommendation:
             raise HTTPException(status_code=404, detail=f"Recommendation {recommendation_id} not found")
-        
+
         import logging
         logger = logging.getLogger(__name__)
         logger.info(f"Found recommendation for benchmark: {recommendation_id}")
@@ -794,7 +795,7 @@ async def benchmark_suggestion(request: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Failed to get recommendation from simple store: {e}")
+        logger.error(f"Failed to get recommendation from service: {e}")
         raise HTTPException(status_code=404, detail=f"Recommendation {recommendation_id} not found")
     
     try:
@@ -831,15 +832,15 @@ async def rollback_suggestion(request: Dict[str, Any]) -> Dict[str, Any]:
     if not recommendation_id:
         raise HTTPException(status_code=400, detail="Missing recommendation_id")
     
-    # Get recommendation from simple store
+    # Get recommendation from service
     try:
-        recommendation = SimpleRecommendationStore.get_recommendation(recommendation_id)
+        recommendation = await RecommendationsService.get_recommendation(recommendation_id)
         if not recommendation:
             raise HTTPException(status_code=404, detail=f"Recommendation {recommendation_id} not found")
     except Exception as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Failed to get recommendation from simple store: {e}")
+        logger.error(f"Failed to get recommendation from service: {e}")
         raise HTTPException(status_code=404, detail=f"Recommendation {recommendation_id} not found")
     
     # Check if it was applied
@@ -893,7 +894,7 @@ async def rollback_suggestion(request: Dict[str, Any]) -> Dict[str, Any]:
         
         # Update recommendation status in simple store (regardless of SQL rollback success)
         from datetime import datetime
-        SimpleRecommendationStore.update_recommendation(recommendation_id, {
+        await RecommendationsService.update_recommendation(recommendation_id, {
             "applied": False,
             "applied_at": None,
             "status": "pending",
@@ -903,8 +904,7 @@ async def rollback_suggestion(request: Dict[str, Any]) -> Dict[str, Any]:
         
         # Log to audit trail
         try:
-            from audit import AuditService
-            AuditService.log_action(
+            await AuditService.log_action(
                 action_type="recommendation_rolled_back",
                 recommendation_id=recommendation_id,
                 details={
@@ -938,8 +938,7 @@ async def rollback_suggestion(request: Dict[str, Any]) -> Dict[str, Any]:
         
         # Log failed rollback attempt
         try:
-            from audit import AuditService
-            AuditService.log_action(
+            await AuditService.log_action(
                 action_type="recommendation_rollback_failed",
                 recommendation_id=recommendation_id,
                 details={
@@ -987,17 +986,17 @@ async def generate_suggestions() -> Dict[str, Any]:
     """Manually trigger recommendation generation using simple store."""
     try:
         # Clear existing recommendations first to prevent piling up
-        SimpleRecommendationStore.clear_all()
+        await RecommendationsService.clear_all()
         
-        # Run analysis pipeline which now stores in SimpleRecommendationStore
+        # Run analysis pipeline which now stores recommendations in Postgres
         results = await run_analysis_pipeline()
         
         # Get the count from the simple store
-        final_count = SimpleRecommendationStore.get_count()
+        final_count = await RecommendationsService.get_count()
         # Ensure at least 6 actionable suggestions
         if final_count < 6:
-            added = _seed_minimum_recommendations(6)
-            final_count = SimpleRecommendationStore.get_count()
+            added = await _seed_minimum_recommendations(6)
+            final_count = await RecommendationsService.get_count()
         
         return {
             "success": True,
@@ -1012,21 +1011,20 @@ async def generate_suggestions() -> Dict[str, Any]:
 @router.get("/")
 async def list_all_suggestions() -> Dict[str, Any]:
     """List all available suggestions with metadata."""
-    # Try SQLite first, fallback to in-memory cache
     try:
-        recs = RecommendationsDB.list_recommendations(limit=1000)
-        db_info = RecommendationsDB.get_database_info()
+        recs = await RecommendationsService.get_all_recommendations()
+        stats = await RecommendationsService.get_stats()
     except Exception as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.warning(f"SQLite query failed, falling back to in-memory cache: {e}")
-        recs = get_recommendations_cache() or []
-        db_info = None
-    
+        logger.error(f"Failed to list recommendations: {e}")
+        recs = await get_recommendations_cache() or []
+        stats = None
+
     return {
         "total": len(recs),
         "recommendations": recs,
-        "database_info": db_info,
+        "storage_stats": stats,
         "categories": {
             "index": len([r for r in recs if r.get("recommendation_type") == "index"]),
             "query": len([r for r in recs if r.get("recommendation_type") == "query"]),
@@ -1038,41 +1036,28 @@ async def list_all_suggestions() -> Dict[str, Any]:
 
 @router.post("/migrate")
 async def migrate_to_sqlite() -> Dict[str, Any]:
-    """Migrate in-memory recommendations to SQLite storage."""
-    from migration_utils import migrate_in_memory_to_sqlite, validate_migration
-    
-    try:
-        # Perform migration
-        migration_result = migrate_in_memory_to_sqlite()
-        
-        # Validate migration
-        validation_result = validate_migration()
-        
-        return {
-            "success": True,
-            "migration": migration_result,
-            "validation": validation_result,
-            "message": "Migration completed successfully"
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Migration failed: {str(e)}")
+    """Legacy endpoint retained for compatibility. No-op with Postgres storage."""
+    return {
+        "success": True,
+        "message": "Recommendations already stored in Postgres; migration not required"
+    }
 
 
 @router.get("/status")
 async def get_recommendations_status() -> Dict[str, Any]:
     """Get recommendations storage status and statistics."""
     try:
-        db_info = RecommendationsDB.get_database_info()
+        stats = await RecommendationsService.get_stats()
         return {
             "success": True,
-            "storage_type": "sqlite",
-            "database_info": db_info,
-            "message": "Recommendations stored in SQLite"
+            "storage_type": "postgres",
+            "storage_stats": stats,
+            "message": "Recommendations stored in Postgres"
         }
     except Exception as e:
         return {
             "success": False,
-            "storage_type": "in_memory",
+            "storage_type": "postgres",
             "error": str(e),
-            "message": "Using in-memory storage (fallback)"
-    } 
+            "message": "Failed to fetch recommendation storage stats"
+    }

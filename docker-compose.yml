@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-optischema_pass}
     command: postgres -c config_file=/etc/postgresql/postgresql.conf
     ports:
-      - "5432:5432"
+      - "5434:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -30,7 +30,8 @@ services:
     container_name: optischema-api
     environment:
       - DATABASE_URL=${DATABASE_URL}
-      - REPLICA_DATABASE_URL=postgresql://sandbox:sandbox_pass@postgres_sandbox:5432/sandbox
+      - REPLICA_DATABASE_URL=${REPLICA_DATABASE_URL}
+      - SANDBOX_DATABASE_URL=postgresql://optischema:optischema_pass@postgres:5432/optischema
       - REPLICA_ENABLED=true
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o}

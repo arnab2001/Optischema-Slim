@@ -4,7 +4,7 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y gcc pkg-config build-essential && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y gcc pkg-config build-essential curl && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
 COPY requirements.txt .

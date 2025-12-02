@@ -5,6 +5,8 @@ Handles environment variables and application settings.
 
 import os
 from typing import Optional
+from uuid import UUID
+
 from pydantic_settings import BaseSettings
 from pydantic import Field
 
@@ -52,6 +54,41 @@ class Settings(BaseSettings):
     gemini_api_key: str = Field(default="", env="GEMINI_API_KEY")
     deepseek_api_key: str = Field(default="", env="DEEPSEEK_API_KEY")
     llm_provider: str = Field(default="gemini", env="LLM_PROVIDER")
+    
+    # Ollama Configuration (Local LLM)
+    ollama_base_url: str = Field(default="http://localhost:11434", env="OLLAMA_BASE_URL")
+    ollama_model: str = Field(default="llama3", env="OLLAMA_MODEL")
+
+    # Multi-tenant Configuration
+    default_tenant_id: UUID = Field(
+        default=UUID("00000000-0000-0000-0000-000000000001"),
+        env="DEFAULT_TENANT_ID"
+    )
+    default_tenant_name: str = Field(default="Default Tenant", env="DEFAULT_TENANT_NAME")
+    
+    # Authentication Configuration
+    enable_authentication: bool = Field(
+        default=False,
+        env="ENABLE_AUTHENTICATION",
+        description="Enable/disable authentication. Set to false for development."
+    )
+    jwt_secret: str = Field(
+        default="dev-secret-change-in-production-PLEASE",
+        env="JWT_SECRET",
+        description="Secret key for JWT token signing"
+    )
+    jwt_expiration_hours: int = Field(
+        default=24,
+        env="JWT_EXPIRATION_HOURS",
+        description="JWT token expiration time in hours"
+    )
+    
+    # Encryption Configuration
+    encryption_key: Optional[str] = Field(
+        default=None,
+        env="ENCRYPTION_KEY",
+        description="Encryption key for sensitive data (Fernet key)"
+    )
     
     class Config:
         env_file = ".env"

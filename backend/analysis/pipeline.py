@@ -14,14 +14,12 @@ from .core import analyze_queries, identify_hot_queries, detect_basic_issues
 from .explain import analyze_execution_plan, get_plan_summary
 from config import settings
 from recommendations import generate_recommendations
+from recommendations_service import RecommendationsService
+from analysis_results_service import AnalysisResultsService
 from utils import calculate_performance_score
+from tenant_context import TenantContext
 
 logger = logging.getLogger(__name__)
-
-# Global cache for analysis results
-analysis_cache: List[AnalysisResult] = []
-last_analysis_time: Optional[datetime] = None
-recommendations_cache: List[Any] = []
 
 
 async def run_analysis_pipeline() -> Dict[str, Any]:
@@ -31,8 +29,6 @@ async def run_analysis_pipeline() -> Dict[str, Any]:
     Returns:
         Analysis results with performance insights and recommendations
     """
-    global analysis_cache, last_analysis_time, recommendations_cache
-    
     try:
         logger.info("Starting analysis pipeline...")
         
@@ -60,6 +56,7 @@ async def run_analysis_pipeline() -> Dict[str, Any]:
                 
                 # Create analysis result
                 analysis_result = AnalysisResult(
+                    tenant_id=TenantContext.get_tenant_id_or_default(),
                     query_hash=hot_query.query_hash,
                     query_text=hot_query.query_text,
                     execution_plan=execution_plan,
@@ -72,40 +69,41 @@ async def run_analysis_pipeline() -> Dict[str, Any]:
                 
                 detailed_analyses.append(analysis_result)
                 
+                # Store analysis result in database
+                analysis_dict = analysis_result.model_dump() if hasattr(analysis_result, 'model_dump') else analysis_result
+                await AnalysisResultsService.store_analysis_result(analysis_dict)
+                
             except Exception as e:
                 logger.error(f"Failed to analyze query {hot_query.query_hash}: {e}")
                 continue
         
-        # Update cache
-        analysis_cache = detailed_analyses
-        last_analysis_time = datetime.utcnow()
-        
-        # Generate recommendations for all analyses and store them simply
+        # Generate recommendations for all analyses and store them
         new_recommendations = await generate_recommendations(detailed_analyses)
         
-        # Store in simple store (deduplication is built-in)
+        # Store recommendations in tenant-aware Postgres service (deduplication handled by service)
         try:
-            from simple_recommendations import SimpleRecommendationStore
             stored_count = 0
             for rec in new_recommendations:
                 rec_dict = rec.model_dump() if hasattr(rec, 'model_dump') else rec
-                rec_id = SimpleRecommendationStore.add_recommendation(rec_dict)
+                
+                # Force query_hash if missing (sometimes excluded from dump)
+                if 'query_hash' not in rec_dict and hasattr(rec, 'query_hash'):
+                    rec_dict['query_hash'] = rec.query_hash
+                
+                rec_id = await RecommendationsService.add_recommendation(rec_dict)
                 if rec_id:
                     stored_count += 1
-            
-            logger.info(f"✅ Stored {stored_count} new recommendations in simple store")
-            # Update cache reference for compatibility
-            recommendations_cache = new_recommendations
+
+            logger.info(f"✅ Stored {stored_count} new recommendations for tenant {TenantContext.get_tenant_id_or_default()}")
         except Exception as e:
             logger.error(f"Failed to store recommendations: {e}")
-            recommendations_cache = new_recommendations
         
-        # Prepare results
+        # Prepare results from database
         results = {
             'core_analysis': core_analysis,
             'detailed_analyses': [analysis.model_dump() for analysis in detailed_analyses],
-            'recommendations': [rec.model_dump() for rec in recommendations_cache],
-            'analysis_timestamp': last_analysis_time.isoformat(),
+            'recommendations': [rec.model_dump() for rec in new_recommendations],
+            'analysis_timestamp': datetime.utcnow().isoformat(),
             'total_queries_analyzed': len(metrics),
             'hot_queries_analyzed': len(detailed_analyses)
         }
@@ -245,18 +243,51 @@ async def start_analysis_scheduler():
             await asyncio.sleep(60)  # Wait 1 minute before retrying
 
 
-def get_analysis_cache() -> List[AnalysisResult]:
-    """Get the latest analysis results from cache."""
-    return analysis_cache
-
-
-def get_last_analysis_time() -> Optional[datetime]:
-    """Get the timestamp of the last analysis run."""
-    return last_analysis_time 
-
-
-def get_recommendations_cache() -> List[Any]:
-    """Get the latest recommendations from cache as dictionaries."""
-    if not recommendations_cache:
+async def get_analysis_cache() -> List[Dict[str, Any]]:
+    """
+    Get the latest analysis results from database for current tenant.
+    
+    Returns:
+        List of recent analysis results
+    """
+    try:
+        # Get recent analyses from database (last hour)
+        analyses = await AnalysisResultsService.get_recent_analyses(hours=1, limit=100)
+        return analyses
+    except Exception as e:
+        logger.error(f"Failed to get analysis cache from database: {e}")
         return []
-    return [rec.model_dump() if hasattr(rec, 'model_dump') else rec for rec in recommendations_cache] 
+
+
+async def get_last_analysis_time() -> Optional[datetime]:
+    """
+    Get the timestamp of the last analysis run for current tenant.
+    
+    Returns:
+        Datetime of last analysis or None
+    """
+    try:
+        analyses = await AnalysisResultsService.get_recent_analyses(hours=24, limit=1)
+        if analyses:
+            return analyses[0].get('created_at')
+        return None
+    except Exception as e:
+        logger.error(f"Failed to get last analysis time: {e}")
+        return None
+
+
+async def get_recommendations_cache() -> List[Dict[str, Any]]:
+    """
+    Get the latest recommendations from database for current tenant.
+    
+    Returns:
+        List of recommendations
+    """
+    try:
+        # Get all recommendations from database
+        recommendations = await RecommendationsService.get_all_recommendations()
+        return recommendations
+    except Exception as e:
+        logger.error(f"Failed to get recommendations from database: {e}")
+        return []
+ 

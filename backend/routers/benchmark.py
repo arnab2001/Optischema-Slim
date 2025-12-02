@@ -8,14 +8,14 @@ from typing import List, Dict, Any, Optional
 import logging
 
 from job_manager import (
-    submit_job, 
-    get_job_status, 
-    list_jobs, 
-    cancel_job, 
+    submit_job,
+    get_job_status,
+    list_jobs,
+    cancel_job,
     cleanup_old_jobs,
     get_job_manager_status
 )
-from recommendations_db import RecommendationsDB
+from recommendations_service import RecommendationsService
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ async def create_benchmark_job(recommendation_id: str) -> Dict[str, Any]:
     """
     try:
         # Verify recommendation exists
-        recommendation = RecommendationsDB.get_recommendation(recommendation_id)
+        recommendation = await RecommendationsService.get_recommendation(recommendation_id)
         if not recommendation:
             raise HTTPException(status_code=404, detail=f"Recommendation {recommendation_id} not found")
         
@@ -102,7 +102,7 @@ async def get_patch_sql(job_id: str) -> Dict[str, Any]:
             raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
         
         # Get recommendation details
-        recommendation = RecommendationsDB.get_recommendation(job['recommendation_id'])
+        recommendation = await RecommendationsService.get_recommendation(job['recommendation_id'])
         if not recommendation:
             raise HTTPException(status_code=404, detail=f"Recommendation not found")
         
@@ -238,7 +238,7 @@ async def get_job_manager_status_endpoint() -> Dict[str, Any]:
         Job manager status information
     """
     try:
-        status = get_job_manager_status()
+        status = await get_job_manager_status()
         
         return {
             "success": True,
@@ -263,7 +263,7 @@ async def create_apply_job(recommendation_id: str) -> Dict[str, Any]:
     """
     try:
         # Verify recommendation exists
-        recommendation = RecommendationsDB.get_recommendation(recommendation_id)
+        recommendation = await RecommendationsService.get_recommendation(recommendation_id)
         if not recommendation:
             raise HTTPException(status_code=404, detail=f"Recommendation {recommendation_id} not found")
         
@@ -302,7 +302,7 @@ async def create_rollback_job(recommendation_id: str) -> Dict[str, Any]:
     """
     try:
         # Verify recommendation exists
-        recommendation = RecommendationsDB.get_recommendation(recommendation_id)
+        recommendation = await RecommendationsService.get_recommendation(recommendation_id)
         if not recommendation:
             raise HTTPException(status_code=404, detail=f"Recommendation {recommendation_id} not found")
         

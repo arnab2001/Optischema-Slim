@@ -3,7 +3,7 @@ Index advisor router for OptiSchema backend.
 Provides endpoints for analyzing and retrieving index recommendations.
 """
 
-from fastapi import APIRouter, HTTPException, Query, Body
+from fastapi import APIRouter, HTTPException, Query, Body, Header
 from typing import Dict, Any, Optional
 from config import get_replica_database_config
 from index_advisor import IndexAdvisorService
@@ -12,13 +12,14 @@ router = APIRouter()
 
 @router.post("/index-advisor/analyze")
 async def run_index_analysis(
-    payload: Dict[str, Any] = Body(..., description="Database connection configuration or wrapper {connection_config}")
+    payload: Dict[str, Any] = Body(..., description="Database connection configuration or wrapper {connection_config}"),
+    tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")
 ) -> Dict[str, Any]:
     """Run full index analysis and store recommendations"""
     try:
         # Support both shapes: {host, port, ...} and {connection_config: {...}}
         connection_config = payload.get("connection_config", payload)
-        result = await IndexAdvisorService.run_full_analysis(connection_config)
+        result = await IndexAdvisorService.run_full_analysis(connection_config, tenant_id=tenant_id)
         if result["success"]:
             return {
                 "success": True,
@@ -39,7 +40,9 @@ async def run_index_analysis(
         }
 
 @router.post("/index-advisor/analyze/sandbox")
-async def run_index_analysis_sandbox() -> Dict[str, Any]:
+async def run_index_analysis_sandbox(
+    tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")
+) -> Dict[str, Any]:
     """Run full index analysis against the sandbox/replica database."""
     try:
         replica_config = get_replica_database_config()
@@ -50,7 +53,7 @@ async def run_index_analysis_sandbox() -> Dict[str, Any]:
                 "error": "REPLICA_DATABASE_URL not set"
             }
 
-        result = await IndexAdvisorService.run_full_analysis(replica_config)
+        result = await IndexAdvisorService.run_full_analysis(replica_config, tenant_id=tenant_id)
         if result["success"]:
             return {
                 "success": True,
@@ -97,58 +100,71 @@ async def get_index_recommendations(
     recommendation_type: Optional[str] = Query(None, description="Filter by recommendation type (drop, analyze)"),
     risk_level: Optional[str] = Query(None, description="Filter by risk level (low, medium, high)"),
     limit: int = Query(100, description="Maximum number of recommendations"),
-    offset: int = Query(0, description="Number of recommendations to skip")
+    offset: int = Query(0, description="Number of recommendations to skip"),
+    tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")
 ):
     """Get index recommendations with optional filtering"""
     try:
-        recommendations = IndexAdvisorService.get_index_recommendations(
+        recommendations = await IndexAdvisorService.get_index_recommendations(
             recommendation_type=recommendation_type,
             risk_level=risk_level,
             limit=limit,
-            offset=offset
+            offset=offset,
+            tenant_id=tenant_id
         )
         return {"success": True, "data": recommendations, "count": len(recommendations)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get recommendations: {str(e)}")
 
 @router.get("/index-advisor/recommendations/unused")
-async def get_unused_index_recommendations():
+async def get_unused_index_recommendations(
+    tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")
+):
     """Get unused index recommendations"""
     try:
-        recommendations = IndexAdvisorService.get_index_recommendations(
+        recommendations = await IndexAdvisorService.get_index_recommendations(
             recommendation_type="drop",
-            limit=1000
+            limit=1000,
+            tenant_id=tenant_id
         )
         return {"success": True, "data": recommendations, "count": len(recommendations)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get unused index recommendations: {str(e)}")
 
 @router.get("/index-advisor/recommendations/redundant")
-async def get_redundant_index_recommendations():
+async def get_redundant_index_recommendations(
+    tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")
+):
     """Get redundant index recommendations"""
     try:
-        recommendations = IndexAdvisorService.get_index_recommendations(
+        recommendations = await IndexAdvisorService.get_index_recommendations(
             recommendation_type="analyze",
-            limit=1000
+            limit=1000,
+            tenant_id=tenant_id
         )
         return {"success": True, "data": recommendations, "count": len(recommendations)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get redundant index recommendations: {str(e)}")
 
 @router.get("/index-advisor/summary")
-async def get_index_recommendation_summary():
+async def get_index_recommendation_summary(
+    tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")
+):
     """Get index recommendation summary statistics"""
     try:
-        summary = IndexAdvisorService.get_index_recommendation_summary()
+        summary = await IndexAdvisorService.get_index_recommendation_summary(tenant_id=tenant_id)
         return {"success": True, "data": summary}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get recommendation summary: {str(e)}")
 
 @router.delete("/index-advisor/recommendations/{recommendation_id}")
-async def delete_recommendation(recommendation_id: str):
+async def delete_recommendation(
+    recommendation_id: str,
+    tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")
+):
     """Delete a specific index recommendation"""
     try:
-        success = IndexAdvisorService.delete_recommendation(recommendation_id)
+        success = await IndexAdvisorService.delete_recommendation(recommendation_id, tenant_id=tenant_id)
         if success:
             return {
                 "success": True,

@@ -5,9 +5,9 @@ services:
     image: postgres:14
     container_name: optischema-postgres-sandbox
     environment:
-      POSTGRES_DB: optischema_sandbox
-      POSTGRES_USER: optischema
-      POSTGRES_PASSWORD: optischema_pass
+      POSTGRES_DB: ${SANDBOX_POSTGRES_DB:-optischema_sandbox}
+      POSTGRES_USER: ${SANDBOX_POSTGRES_USER:-optischema}
+      POSTGRES_PASSWORD: ${SANDBOX_POSTGRES_PASSWORD:-optischema_pass}
     ports:
       - "5433:5432"  # Different port to avoid conflicts
     volumes:
@@ -15,7 +15,7 @@ services:
       - ./postgresql.conf:/etc/postgresql/postgresql.conf
     command: postgres -c config_file=/etc/postgresql/postgresql.conf
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U optischema -d optischema_sandbox"]
+      test: ["CMD-SHELL", "pg_isready -U ${SANDBOX_POSTGRES_USER:-optischema} -d ${SANDBOX_POSTGRES_DB:-optischema_sandbox}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -26,7 +26,7 @@ services:
       dockerfile: Dockerfile
     container_name: optischema-sandbox
     environment:
-      - DATABASE_URL=postgresql://optischema:optischema_pass@postgres-sandbox:5432/optischema_sandbox
+      - DATABASE_URL=${SANDBOX_DATABASE_URL}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - LLM_PROVIDER=${LLM_PROVIDER:-gemini}

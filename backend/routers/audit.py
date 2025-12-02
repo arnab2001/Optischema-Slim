@@ -5,9 +5,9 @@ Provides endpoints for audit log retrieval and export.
 
 import csv
 import io
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, Header
 from typing import Optional, List
-from audit import AuditService
+from audit_service import AuditService
 
 router = APIRouter()
 
@@ -18,17 +18,19 @@ async def get_audit_logs(
     start_date: Optional[str] = Query(None, description="Start date (ISO format)"),
     end_date: Optional[str] = Query(None, description="End date (ISO format)"),
     limit: int = Query(100, description="Maximum number of records"),
-    offset: int = Query(0, description="Number of records to skip")
+    offset: int = Query(0, description="Number of records to skip"),
+    tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")
 ):
     """Get audit logs with optional filtering"""
     try:
-        logs = AuditService.get_audit_logs(
+        logs = await AuditService.get_audit_logs(
             action_type=action_type,
             user_id=user_id,
             start_date=start_date,
             end_date=end_date,
             limit=limit,
-            offset=offset
+            offset=offset,
+            tenant_id=tenant_id
         )
         return {"success": True, "data": logs, "count": len(logs)}
     except Exception as e:
@@ -40,16 +42,18 @@ async def export_audit_logs(
     user_id: Optional[str] = Query(None, description="Filter by user ID"),
     start_date: Optional[str] = Query(None, description="Start date (ISO format)"),
     end_date: Optional[str] = Query(None, description="End date (ISO format)"),
-    format: str = Query("csv", description="Export format (csv or json)")
+    format: str = Query("csv", description="Export format (csv or json)"),
+    tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")
 ):
     """Export audit logs as CSV or JSON"""
     try:
-        logs = AuditService.get_audit_logs(
+        logs = await AuditService.get_audit_logs(
             action_type=action_type,
             user_id=user_id,
             start_date=start_date,
             end_date=end_date,
-            limit=10000  # Large limit for export
+            limit=10000,  # Large limit for export
+            tenant_id=tenant_id
         )
         
         if format.lower() == "csv":
@@ -73,30 +77,28 @@ async def export_audit_logs(
         raise HTTPException(status_code=500, detail=f"Failed to export audit logs: {str(e)}")
 
 @router.get("/audit/summary")
-async def get_audit_summary():
+async def get_audit_summary(tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
     """Get audit log summary statistics"""
     try:
-        summary = AuditService.get_audit_summary()
+        summary = await AuditService.get_audit_summary(tenant_id=tenant_id)
         return {"success": True, "data": summary}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get audit summary: {str(e)}")
 
 @router.get("/audit/action-types")
-async def get_audit_action_types():
+async def get_audit_action_types(tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
     """Get list of unique action types in audit logs"""
     try:
-        logs = AuditService.get_audit_logs(limit=10000)
-        action_types = list(set(log['action_type'] for log in logs))
+        action_types = await AuditService.get_distinct_action_types(tenant_id=tenant_id)
         return {"success": True, "data": sorted(action_types)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get action types: {str(e)}")
 
 @router.get("/audit/users")
-async def get_audit_users():
+async def get_audit_users(tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
     """Get list of unique users in audit logs"""
     try:
-        logs = AuditService.get_audit_logs(limit=10000)
-        users = list(set(log['user_id'] for log in logs if log['user_id']))
+        users = await AuditService.get_distinct_users(tenant_id=tenant_id)
         return {"success": True, "data": sorted(users)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get users: {str(e)}") 

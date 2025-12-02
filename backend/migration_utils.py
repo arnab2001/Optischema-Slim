@@ -1,12 +1,13 @@
 """
 Migration utilities for OptiSchema backend.
-Handles migration from in-memory cache to SQLite storage.
+Handles migration from in-memory cache to Postgres storage.
 """
 
 import logging
+import asyncio
 from typing import List, Dict, Any
-from recommendations_db import RecommendationsDB
 from analysis.pipeline import get_recommendations_cache
+from recommendations_service import RecommendationsService
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -14,13 +15,13 @@ logger = logging.getLogger(__name__)
 
 def migrate_in_memory_to_sqlite() -> Dict[str, Any]:
     """
-    Migrate existing in-memory recommendations to SQLite storage.
-    
+    Migrate existing in-memory recommendations to Postgres storage.
+
     Returns:
         Migration results with statistics
     """
     try:
-        logger.info("Starting migration from in-memory cache to SQLite...")
+        logger.info("Starting migration from in-memory cache to Postgres...")
         
         # Get existing recommendations from in-memory cache
         existing_recommendations = get_recommendations_cache()
@@ -69,8 +70,8 @@ def migrate_in_memory_to_sqlite() -> Dict[str, Any]:
                     'created_at': rec.get('created_at')
                 }
                 
-                # Store in SQLite
-                rec_id = RecommendationsDB.store_recommendation(rec_dict)
+                # Store in Postgres (tenant-aware)
+                rec_id = asyncio.run(RecommendationsService.add_recommendation(rec_dict))
                 migrated_count += 1
                 logger.debug(f"Migrated recommendation {rec_id}")
                 
@@ -80,17 +81,13 @@ def migrate_in_memory_to_sqlite() -> Dict[str, Any]:
                 errors.append(error_msg)
                 logger.error(error_msg)
         
-        # Get database info after migration
-        db_info = RecommendationsDB.get_database_info()
-        
         result = {
             "success": True,
             "migrated_count": migrated_count,
             "failed_count": failed_count,
             "total_in_memory": len(existing_recommendations),
             "errors": errors,
-            "database_info": db_info,
-            "message": f"Successfully migrated {migrated_count} recommendations to SQLite"
+            "message": f"Successfully migrated {migrated_count} recommendations to Postgres"
         }
         
         logger.info(f"Migration completed: {migrated_count} migrated, {failed_count} failed")
@@ -119,24 +116,24 @@ def validate_migration() -> Dict[str, Any]:
         in_memory_recs = get_recommendations_cache()
         in_memory_count = len(in_memory_recs) if isinstance(in_memory_recs, list) else 1 if in_memory_recs else 0
         
-        # Get SQLite count
-        sqlite_count = RecommendationsDB.get_recommendations_count()
+        # Get Postgres count
+        pg_count = asyncio.run(RecommendationsService.get_count())
         
-        # Get SQLite recommendations
-        sqlite_recs = RecommendationsDB.list_recommendations(limit=1000)
+        # Get Postgres recommendations
+        pg_recs = asyncio.run(RecommendationsService.get_all_recommendations())
         
         validation_result = {
             "success": True,
             "in_memory_count": in_memory_count,
-            "sqlite_count": sqlite_count,
-            "counts_match": in_memory_count == sqlite_count,
-            "sqlite_recommendations": len(sqlite_recs),
-            "message": f"In-memory: {in_memory_count}, SQLite: {sqlite_count}"
+            "postgres_count": pg_count,
+            "counts_match": in_memory_count == pg_count,
+            "postgres_recommendations": len(pg_recs),
+            "message": f"In-memory: {in_memory_count}, Postgres: {pg_count}"
         }
         
-        if in_memory_count != sqlite_count:
+        if in_memory_count != pg_count:
             validation_result["warning"] = "Count mismatch detected"
-            logger.warning(f"Count mismatch: in-memory={in_memory_count}, sqlite={sqlite_count}")
+            logger.warning(f"Count mismatch: in-memory={in_memory_count}, postgres={pg_count}")
         
         return validation_result
         
@@ -203,7 +200,7 @@ def restore_from_backup(backup: List[Dict[str, Any]]) -> Dict[str, Any]:
             try:
                 rec = backup_item.get('recommendation', {})
                 if rec:
-                    rec_id = RecommendationsDB.store_recommendation(rec)
+                    rec_id = asyncio.run(RecommendationsService.add_recommendation(rec))
                     restored_count += 1
                     logger.debug(f"Restored recommendation {rec_id}")
             except Exception as e:

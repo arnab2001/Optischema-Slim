@@ -1,75 +1,103 @@
 """
 WebSocket implementation for OptiSchema backend.
-Handles real-time communication for live dashboard updates.
+Handles real-time communication for live dashboard updates with tenant isolation.
 """
 
 import asyncio
 import logging
 import time
 from datetime import datetime
-from typing import Dict, Set, Any
+from typing import Dict, Set, Any, Optional
 from fastapi import WebSocket, WebSocketDisconnect
 from models import WebSocketMessage
 
 logger = logging.getLogger(__name__)
 
-# Global WebSocket connection management
-websocket_connections: Dict[str, WebSocket] = {}
+# Global WebSocket connection management with tenant awareness
+# Structure: {connection_id: {"websocket": WebSocket, "tenant_id": str}}
+websocket_connections: Dict[str, Dict[str, Any]] = {}
 subscriptions: Dict[str, Set[str]] = {}  # connection_id -> set of subscription types
 
 
 class WebSocketManager:
-    """Manages WebSocket connections and subscriptions."""
+    """Manages WebSocket connections and subscriptions with tenant isolation."""
     
     def __init__(self):
         self.connections = websocket_connections
         self.subscriptions = subscriptions
     
-    async def connect(self, websocket: WebSocket) -> str:
-        """Accept a new WebSocket connection."""
+    async def connect(self, websocket: WebSocket, tenant_id: Optional[str] = None) -> str:
+        """
+        Accept a new WebSocket connection with tenant context.
+        
+        Args:
+            websocket: WebSocket connection
+            tenant_id: Optional tenant ID from headers/query params
+            
+        Returns:
+            Connection ID
+        """
         await websocket.accept()
         
         # Generate unique connection ID
         connection_id = f"ws_{int(time.time() * 1000)}_{id(websocket)}"
-        self.connections[connection_id] = websocket
+        
+        # Store connection with tenant context
+        self.connections[connection_id] = {
+            "websocket": websocket,
+            "tenant_id": tenant_id or "00000000-0000-0000-0000-000000000001"  # Default tenant
+        }
         self.subscriptions[connection_id] = set()
         
-        logger.info(f"WebSocket connection established: {connection_id}")
+        logger.info(f"WebSocket connection established: {connection_id} (tenant: {tenant_id})")
         return connection_id
     
     def disconnect(self, connection_id: str):
         """Remove a WebSocket connection."""
         if connection_id in self.connections:
+            tenant_id = self.connections[connection_id].get("tenant_id")
             del self.connections[connection_id]
+            logger.info(f"WebSocket connection removed: {connection_id} (tenant: {tenant_id})")
         if connection_id in self.subscriptions:
             del self.subscriptions[connection_id]
-        logger.info(f"WebSocket connection removed: {connection_id}")
     
     async def send_message(self, connection_id: str, message: WebSocketMessage):
         """Send a message to a specific connection."""
         if connection_id in self.connections:
             try:
-                websocket = self.connections[connection_id]
+                websocket = self.connections[connection_id]["websocket"]
                 await websocket.send_text(message.model_dump_json())
             except Exception as e:
                 logger.error(f"Failed to send message to {connection_id}: {e}")
                 self.disconnect(connection_id)
     
-    async def broadcast(self, message: WebSocketMessage, subscription_type: str = None):
-        """Broadcast a message to all connections (optionally filtered by subscription)."""
+    async def broadcast(self, message: WebSocketMessage, subscription_type: str = None, tenant_id: Optional[str] = None):
+        """
+        Broadcast a message to connections, optionally filtered by subscription and tenant.
+        
+        Args:
+            message: Message to broadcast
+            subscription_type: Optional subscription type filter
+            tenant_id: Optional tenant ID filter (broadcasts only to this tenant)
+        """
         if not self.connections:
             return
         
         message_json = message.model_dump_json()
         disconnected = []
         
-        for connection_id, websocket in self.connections.items():
+        for connection_id, conn_data in self.connections.items():
             try:
-                # If subscription type is specified, only send to subscribed connections
+                # Filter by tenant if specified
+                if tenant_id and conn_data.get("tenant_id") != tenant_id:
+                    continue
+                
+                # Filter by subscription type if specified
                 if subscription_type and connection_id in self.subscriptions:
                     if subscription_type not in self.subscriptions[connection_id]:
                         continue
                 
+                websocket = conn_data["websocket"]
                 await websocket.send_text(message_json)
             except Exception as e:
                 logger.error(f"Failed to broadcast to {connection_id}: {e}")
@@ -83,13 +111,15 @@ class WebSocketManager:
         """Subscribe a connection to a specific type of updates."""
         if connection_id in self.subscriptions:
             self.subscriptions[connection_id].add(subscription_type)
-            logger.info(f"Connection {connection_id} subscribed to {subscription_type}")
+            tenant_id = self.connections[connection_id].get("tenant_id")
+            logger.info(f"Connection {connection_id} (tenant: {tenant_id}) subscribed to {subscription_type}")
     
     def unsubscribe(self, connection_id: str, subscription_type: str):
         """Unsubscribe a connection from a specific type of updates."""
         if connection_id in self.subscriptions:
             self.subscriptions[connection_id].discard(subscription_type)
-            logger.info(f"Connection {connection_id} unsubscribed from {subscription_type}")
+            tenant_id = self.connections[connection_id].get("tenant_id")
+            logger.info(f"Connection {connection_id} (tenant: {tenant_id}) unsubscribed from {subscription_type}")
 
 
 # Global WebSocket manager instance
@@ -97,8 +127,22 @@ ws_manager = WebSocketManager()
 
 
 async def handle_websocket_connection(websocket: WebSocket):
-    """Handle a WebSocket connection lifecycle."""
-    connection_id = await ws_manager.connect(websocket)
+    """
+    Handle a WebSocket connection lifecycle with tenant awareness.
+    
+    Args:
+        websocket: WebSocket connection
+    """
+    # Extract tenant_id from query parameters
+    tenant_id = websocket.query_params.get("tenant_id")
+    if not tenant_id:
+        # Try to get from headers
+        tenant_id = websocket.headers.get("X-Tenant-ID")
+    
+    connection_id = await ws_manager.connect(websocket, tenant_id=tenant_id)
+    
+    # Get the actual tenant_id that was set (might be default)
+    actual_tenant_id = ws_manager.connections[connection_id].get("tenant_id")
     
     try:
         # Send welcome message
@@ -106,6 +150,7 @@ async def handle_websocket_connection(websocket: WebSocket):
             type="connection_established",
             data={
                 "connection_id": connection_id,
+                "tenant_id": actual_tenant_id,
                 "message": "Connected to OptiSchema WebSocket",
                 "timestamp": datetime.utcnow().isoformat()
             }
@@ -220,8 +265,8 @@ async def handle_websocket_message(connection_id: str, data: str):
 
 
 # Real-time update functions
-async def broadcast_metrics_update(metrics_data: Dict[str, Any]):
-    """Broadcast metrics update to subscribed clients."""
+async def broadcast_metrics_update(metrics_data: Dict[str, Any], tenant_id: Optional[str] = None):
+    """Broadcast metrics update to subscribed clients for a specific tenant."""
     message = WebSocketMessage(
         type="metrics_update",
         data={
@@ -229,11 +274,12 @@ async def broadcast_metrics_update(metrics_data: Dict[str, Any]):
             "metrics": metrics_data
         }
     )
-    await ws_manager.broadcast(message, "metrics")
+    await ws_manager.broadcast(message, subscription_type="metrics", tenant_id=tenant_id)
 
 
-async def broadcast_recommendation_update(recommendation_data: Dict[str, Any]):
-    """Broadcast recommendation update to subscribed clients."""
+
+async def broadcast_recommendation_update(recommendation_data: Dict[str, Any], tenant_id: Optional[str] = None):
+    """Broadcast recommendation update to subscribed clients for a specific tenant."""
     message = WebSocketMessage(
         type="recommendation_update",
         data={
@@ -241,11 +287,12 @@ async def broadcast_recommendation_update(recommendation_data: Dict[str, Any]):
             "recommendation": recommendation_data
         }
     )
-    await ws_manager.broadcast(message, "recommendations")
+    await ws_manager.broadcast(message, subscription_type="recommendations", tenant_id=tenant_id)
 
 
-async def broadcast_analysis_update(analysis_data: Dict[str, Any]):
-    """Broadcast analysis update to subscribed clients."""
+
+async def broadcast_analysis_update(analysis_data: Dict[str, Any], tenant_id: Optional[str] = None):
+    """Broadcast analysis update to subscribed clients for a specific tenant."""
     message = WebSocketMessage(
         type="analysis_update",
         data={
@@ -253,7 +300,7 @@ async def broadcast_analysis_update(analysis_data: Dict[str, Any]):
             "analysis": analysis_data
         }
     )
-    await ws_manager.broadcast(message, "analysis")
+    await ws_manager.broadcast(message, subscription_type="analysis", tenant_id=tenant_id)
 
 
 async def broadcast_system_status(status_data: Dict[str, Any]):

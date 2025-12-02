@@ -72,7 +72,9 @@ async def main():
     """Main function."""
     try:
         # Connect to database
-        database_url = os.getenv('DATABASE_URL', 'postgresql://optischema:optischema_pass@postgres:5432/optischema')
+        database_url = os.getenv('DATABASE_URL')
+        if not database_url:
+            raise RuntimeError('DATABASE_URL is not set')
         conn = await asyncpg.connect(database_url)
         
         print("✅ Connected to database")
