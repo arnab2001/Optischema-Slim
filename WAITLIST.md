@@ -14,6 +14,19 @@ The landing page includes a waitlist signup form powered by a Supabase Edge Func
 - Confirmation token generation
 - Optional email provider integration
 
+### Authentication
+
+The Edge Function requires Supabase authentication. You need to include the anon key in requests:
+
+**Option 1: Set environment variable (Recommended)**
+```bash
+# In frontend/.env.local
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
+```
+
+**Option 2: Make function public (Not recommended for production)**
+Configure the Edge Function to allow anonymous access in Supabase dashboard.
+
 ### Request Format
 
 ```json

@@ -243,17 +243,34 @@ function WaitlistSection() {
     setMessage('')
 
     try {
+      console.log('Submitting email to waitlist:', email.trim())
+      
+      // Get anon key from environment or use public key
+      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+      
       const response = await fetch('https://lnvkeysarmzdprtmufwt.supabase.co/functions/v1/waitlist', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(anonKey && { 'Authorization': `Bearer ${anonKey}` }),
         },
         body: JSON.stringify({ email: email.trim() }),
       })
 
-      const data = await response.json()
+      console.log('Response status:', response.status)
+      
+      // Try to parse JSON, but handle cases where it might not be JSON
+      let data
+      try {
+        data = await response.json()
+        console.log('Response data:', data)
+      } catch (parseError) {
+        console.error('Failed to parse response as JSON:', parseError)
+        throw new Error('Invalid response from server. Please try again.')
+      }
 
       if (!response.ok) {
+        console.error('Request failed:', data)
         throw new Error(data.error || 'Failed to join waitlist')
       }
 
@@ -263,8 +280,15 @@ function WaitlistSection() {
         : 'Success! Check your email to confirm.')
       setEmail('')
     } catch (error) {
+      console.error('Waitlist submission error:', error)
       setStatus('error')
-      setMessage(error instanceof Error ? error.message : 'Something went wrong. Please try again.')
+      
+      // Check if it's a network error (CORS)
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        setMessage('Network error. Please check your internet connection or try again later.')
+      } else {
+        setMessage(error instanceof Error ? error.message : 'Something went wrong. Please try again.')
+      }
     }
   }
 
