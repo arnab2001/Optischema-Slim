@@ -17,10 +17,14 @@ export interface WaitlistError {
 }
 
 export async function joinWaitlist(email: string): Promise<WaitlistResponse> {
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+  
   const response = await fetch(WAITLIST_ENDPOINT, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'Authorization': `Bearer ${anonKey}`,
+      'apikey': anonKey,
     },
     body: JSON.stringify({ email: email.trim() }),
   })

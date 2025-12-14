@@ -245,14 +245,22 @@ function WaitlistSection() {
     try {
       console.log('Submitting email to waitlist:', email.trim())
       
-      // Get anon key from environment or use public key
-      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+      // Get anon key from environment or use hardcoded fallback
+      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_WrIS4GLRZwLP8LJZi8TjfQ_cCPvoYZQ'
+      
+      console.log('Anon key loaded:', anonKey ? '✅ Yes' : '❌ No')
+      console.log('Key preview:', anonKey.substring(0, 20) + '...')
+      
+      if (!anonKey) {
+        throw new Error('Supabase key not configured. Please check environment variables.')
+      }
       
       const response = await fetch('https://lnvkeysarmzdprtmufwt.supabase.co/functions/v1/waitlist', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(anonKey && { 'Authorization': `Bearer ${anonKey}` }),
+          'Authorization': `Bearer ${anonKey}`,
+          'apikey': anonKey,
         },
         body: JSON.stringify({ email: email.trim() }),
       })
