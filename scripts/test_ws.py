@@ -3,7 +3,7 @@ import websockets
 import json
 
 async def test_ws():
-    uri = "ws://localhost:8000/ws"
+    uri = "ws://localhost:8080/ws"
     async with websockets.connect(uri) as websocket:
         # Receive welcome message
         welcome = await websocket.recv()

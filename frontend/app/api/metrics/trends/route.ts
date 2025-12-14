@@ -3,9 +3,9 @@ import { mergeTenantHeaders, resolveTenantIdFromRequest } from '@/lib/tenant'
 
 export async function GET(request: NextRequest) {
   try {
-    const backendUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/metrics/trends`
+    const backendUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'}/metrics/trends`
     const tenantId = resolveTenantIdFromRequest(request)
-    
+
     const response = await fetch(backendUrl, {
       headers: mergeTenantHeaders(tenantId),
     })

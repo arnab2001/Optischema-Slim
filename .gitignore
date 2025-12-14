@@ -34,6 +34,12 @@ MANIFEST
 .env.production.local
 .env.backup
 .env.*.backup
+.env.prod
+.env.production
+.env.staging
+*.env
+!.env.example
+!.env.*.example
 
 # Python virtual environments
 venv/
@@ -131,6 +137,22 @@ temp/
 *.db
 *.sqlite
 *.sqlite3
+
+# Secrets and keys
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
+*.pub
+secrets/
+credentials/
+*.secret
 
 # Docker
 .dockerignore

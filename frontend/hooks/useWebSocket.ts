@@ -14,7 +14,7 @@ interface UseWebSocketOptions {
 }
 
 export function useWebSocket({
-  url = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000/ws',
+  url = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080/ws',
   onMessage,
   onError,
   onOpen,
@@ -27,7 +27,7 @@ export function useWebSocket({
   const connect = useCallback(() => {
     try {
       const ws = new WebSocket(url)
-      
+
       ws.onopen = () => {
         setIsConnected(true)
         onOpen?.()

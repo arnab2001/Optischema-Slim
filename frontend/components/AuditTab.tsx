@@ -7,7 +7,7 @@ interface AuditLog {
   id: string;
   action_type: string;
   recommendation_id: string;
-  query_hash: string;
+  queryid: string;
   before_metrics: any;
   after_metrics: any;
   improvement_percent: number;

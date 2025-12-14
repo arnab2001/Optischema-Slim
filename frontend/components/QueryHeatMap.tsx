@@ -7,7 +7,7 @@ import { AlertTriangle, TrendingUp, TrendingDown, BarChart3 } from 'lucide-react
 interface QueryData {
   mean_time: number
   calls: number
-  query_hash: string
+  queryid: string
   query_text: string
   performance_score?: number
   time_percentage?: number
@@ -56,7 +56,7 @@ const QueryHeatMap: React.FC<QueryHeatMapProps> = ({ data, onQueryClick }) => {
         y: normalizedY,
         originalCalls: item.calls,
         originalTime: item.mean_time,
-        query_hash: item.query_hash,
+        queryid: item.queryid,
         query_text: item.query_text,
         performance_score: item.performance_score || 50,
         time_percentage: item.time_percentage || 0,
@@ -136,7 +136,7 @@ const QueryHeatMap: React.FC<QueryHeatMapProps> = ({ data, onQueryClick }) => {
       const queryData: QueryData = {
         mean_time: data.originalTime,
         calls: data.originalCalls,
-        query_hash: data.query_hash,
+        queryid: data.queryid,
         query_text: data.query_text,
         performance_score: data.performance_score,
         time_percentage: data.time_percentage

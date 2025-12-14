@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { mergeTenantHeaders, resolveTenantIdFromRequest } from '@/lib/tenant'
 
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8000'
+const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8080'
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     })
 
     const data = await response.json()
-    
+
     return NextResponse.json(data, {
       status: response.status,
     })

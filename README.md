@@ -9,7 +9,7 @@ AI-powered PostgreSQL performance: watch real workload, pinpoint hot queries, ge
 docker compose up --build
 ```
 - UI: http://localhost:3000
-- API: http://localhost:8000/docs
+- API: http://localhost:8080/docs
 
 2) Optional: Start isolated sandbox Postgres (for safe benchmarks)
 ```bash
@@ -47,11 +47,11 @@ DEEPSEEK_API_KEY=
 LLM_PROVIDER=gemini  # gemini | openai | deepseek
 
 # WebSocket Configuration
-UI_WS_URL=ws://localhost:8000/ws
+UI_WS_URL=ws://localhost:8080/ws
 
 # Backend Configuration
 BACKEND_HOST=0.0.0.0
-BACKEND_PORT=8000
+BACKEND_PORT=8080
 BACKEND_RELOAD=true
 
 # Frontend Configuration
@@ -116,7 +116,7 @@ Security note: never commit `.env` with real keys. Use placeholders in `.env.exa
 # Backend (FastAPI)
 cd backend
 pip install -r requirements.txt
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn main:app --host 0.0.0.0 --port 8080 --reload
 
 # Frontend (Next.js)
 cd ../frontend

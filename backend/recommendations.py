@@ -77,10 +77,11 @@ async def generate_recommendations_for_analysis(analysis: AnalysisResult) -> Lis
         })
         
         # Create AI recommendation
+        queryid = getattr(analysis, 'queryid', None) or getattr(analysis, 'query_hash', None)  # Support both for backward compat
         ai_recommendation = Recommendation(
             tenant_id=analysis.tenant_id,
             id=str(uuid.uuid4()),
-            query_hash=analysis.query_hash,
+            queryid=queryid,
             recommendation_type=ai_rec.get("recommendation_type", "ai"),
             title=ai_rec.get("title", "AI Optimization Suggestion"),
             description=ai_rec.get("description", ""),
@@ -95,13 +96,14 @@ async def generate_recommendations_for_analysis(analysis: AnalysisResult) -> Lis
         
         # If AI provided executable SQL, we're done - no need for heuristic duplicates
         if ai_rec.get("sql_fix"):
-            logger.info(f"Generated executable AI recommendation for {analysis.query_hash[:8]}...")
+            logger.info(f"Generated executable AI recommendation for {queryid[:8] if queryid else 'unknown'}...")
             return recs
         else:
-            logger.info(f"Generated advisory AI recommendation for {analysis.query_hash[:8]}...")
+            logger.info(f"Generated advisory AI recommendation for {queryid[:8] if queryid else 'unknown'}...")
     
     except Exception as e:
-        logger.warning(f"AI recommendation failed for {analysis.query_hash}: {e}")
+        queryid = getattr(analysis, 'queryid', None) or getattr(analysis, 'query_hash', None)
+        logger.warning(f"AI recommendation failed for {queryid}: {e}")
     
     # Fallback to heuristic recommendations only if AI failed or provided no executable SQL
     if not recs or not recs[0].sql_fix:
@@ -134,11 +136,12 @@ async def generate_recommendations_for_analysis(analysis: AnalysisResult) -> Lis
         sql_from_plan = build_index_sql_from_plan()
 
         # Generate ONE best heuristic recommendation based on bottleneck type
+        queryid = getattr(analysis, 'queryid', None) or getattr(analysis, 'query_hash', None)  # Support both for backward compat
         if analysis.bottleneck_type in ("sequential_scan", "missing_index"):
             recs.append(Recommendation(
                 tenant_id=analysis.tenant_id,
                 id=str(uuid.uuid4()),
-                query_hash=analysis.query_hash,
+                queryid=queryid,
                 recommendation_type="index",
                 title="Add Index to Improve Performance",
                 description=f"This query shows signs of {analysis.bottleneck_type}. Consider adding an index to improve query performance. Analyze the WHERE and JOIN clauses to identify the best columns for indexing.",
@@ -153,7 +156,7 @@ async def generate_recommendations_for_analysis(analysis: AnalysisResult) -> Lis
             recs.append(Recommendation(
                 tenant_id=analysis.tenant_id,
                 id=str(uuid.uuid4()),
-                query_hash=analysis.query_hash,
+                queryid=queryid,
                 recommendation_type="index",
                 title="Add Index for ORDER BY Performance",
                 description="This query performs large sorts. Consider adding an index on the ORDER BY columns to eliminate the sort operation and improve performance.",
@@ -169,7 +172,7 @@ async def generate_recommendations_for_analysis(analysis: AnalysisResult) -> Lis
             recs.append(Recommendation(
                 tenant_id=analysis.tenant_id,
                 id=str(uuid.uuid4()),
-                query_hash=analysis.query_hash,
+                queryid=queryid,
                 recommendation_type="optimization",
                 title="Query Optimization Opportunity",
                 description=f"This query shows performance issues related to {analysis.bottleneck_type}. Consider reviewing the query structure, indexes, and data access patterns.",

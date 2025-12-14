@@ -24,7 +24,7 @@ docker-compose logs -f optischema-api
 
 1. **Check Health**
    ```bash
-   curl http://localhost:8000/health
+   curl http://localhost:8080/health
    ```
 
 2. **Validate Database Schema** (optional)
@@ -90,7 +90,7 @@ LLM_PROVIDER=gemini
 
 # Backend Configuration
 BACKEND_HOST=0.0.0.0
-BACKEND_PORT=8000
+BACKEND_PORT=8080
 BACKEND_RELOAD=true
 ENVIRONMENT=development
 DEBUG=true
@@ -159,30 +159,30 @@ docker-compose up -d --force-recreate optischema-api
 
 ```bash
 # Trigger analysis
-curl -X POST http://localhost:8000/api/analysis/run
+curl -X POST http://localhost:8080/api/analysis/run
 
 # Get latest analysis
-curl http://localhost:8000/api/analysis/latest
+curl http://localhost:8080/api/analysis/latest
 
 # Check status
-curl http://localhost:8000/api/analysis/status
+curl http://localhost:8080/api/analysis/status
 ```
 
 ### 2. Test Recommendations
 
 ```bash
 # Get recommendations
-curl http://localhost:8000/api/suggestions/latest
+curl http://localhost:8080/api/suggestions/latest
 
 # Get stats
-curl http://localhost:8000/api/suggestions/stats
+curl http://localhost:8080/api/suggestions/stats
 ```
 
 ### 3. Test WebSocket (with tenant)
 
 ```javascript
 // Connect with tenant_id
-const ws = new WebSocket('ws://localhost:8000/ws?tenant_id=00000000-0000-0000-0000-000000000001');
+const ws = new WebSocket('ws://localhost:8080/ws?tenant_id=00000000-0000-0000-0000-000000000001');
 
 ws.onmessage = (event) => {
   console.log('Received:', JSON.parse(event.data));
@@ -258,7 +258,7 @@ docker-compose exec postgres psql -U optischema -d optischema -c "SELECT id, tit
 ## Next Steps
 
 1. ✅ **Start the backend** - `docker-compose up -d`
-2. ✅ **Verify health** - `curl http://localhost:8000/health`
+2. ✅ **Verify health** - `curl http://localhost:8080/health`
 3. ✅ **Test endpoints** - Use the API to trigger analysis
 4. ✅ **Check database** - Verify data is being stored
 5. ⏳ **Production deployment** - When ready, deploy behind load balancer

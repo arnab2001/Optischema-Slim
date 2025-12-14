@@ -4,7 +4,7 @@ import { mergeTenantHeaders, resolveTenantIdFromRequest } from '@/lib/tenant'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
     const tenantId = resolveTenantIdFromRequest(request)
 
     // Get authorization header from the incoming request

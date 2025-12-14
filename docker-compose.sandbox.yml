@@ -31,7 +31,7 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
     ports:
-      - "8001:8000"  # Different port to avoid conflicts
+      - "8001:8080"  # Different port to avoid conflicts
     depends_on:
       postgres-sandbox:
         condition: service_healthy
@@ -45,7 +45,7 @@ services:
         echo 'Running sandbox setup...' &&
         python /scripts/seed_data.py &&
         echo 'Starting sandbox API...' &&
-        uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+        uvicorn main:app --host 0.0.0.0 --port 8080 --reload
       "
 
 volumes:

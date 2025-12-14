@@ -5,10 +5,10 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     console.log('Apply-and-test request:', body);
-    
+
     // Forward the request to the backend - use Docker service name
     const tenantId = resolveTenantIdFromRequest(request);
-    const backendResponse = await fetch('http://optischema-api:8000/suggestions/apply-and-test', {
+    const backendResponse = await fetch('http://optischema-api:8080/suggestions/apply-and-test', {
       method: 'POST',
       headers: mergeTenantHeaders(tenantId, {
         'Content-Type': 'application/json',
@@ -24,11 +24,11 @@ export async function POST(request: NextRequest) {
       const errorMessage = data.message || data.detail || 'Apply and test failed';
       console.error('Backend error:', errorMessage);
       return NextResponse.json(
-        { 
+        {
           error: errorMessage,
           success: false,
           message: errorMessage,
-          details: data 
+          details: data
         },
         { status: backendResponse.status }
       );
@@ -38,10 +38,10 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Apply and test API error:', error);
     return NextResponse.json(
-      { 
+      {
         error: `Internal server error: ${error}`,
         success: false,
-        message: `Frontend API error: ${error}` 
+        message: `Frontend API error: ${error}`
       },
       { status: 500 }
     );

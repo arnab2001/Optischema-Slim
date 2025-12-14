@@ -1,470 +1,253 @@
 """
-Database connection manager for OptiSchema backend.
-Handles per-tenant database connection pools with database-backed storage.
+Database connection manager for OptiSchema Slim.
+Handles the single active database connection.
 """
 
-import asyncio
 import logging
-from typing import Optional, Dict, Any
 import asyncpg
 from asyncpg import Pool, Connection
-from datetime import datetime
+from typing import Optional, Dict, Any, Tuple
+from urllib.parse import urlparse, parse_qs
 
-from config import settings
+from storage import get_setting, set_setting
 
 logger = logging.getLogger(__name__)
 
 class ConnectionManager:
-    """Manages per-tenant database connections with database-backed storage."""
+    """Manages the single active database connection."""
     
     def __init__(self):
-        # Per-tenant connection pools
-        self._pools: Dict[str, Pool] = {}  # tenant_id -> Pool
+        self._pool: Optional[Pool] = None
+        self._config: Optional[Dict[str, Any]] = None
+        self._pg_version: Optional[int] = None  # Cached PostgreSQL version number
         
-        # Legacy support for default tenant (backward compatibility)
-        self._current_pool: Optional[Pool] = None
-        self._current_config: Optional[Dict[str, Any]] = None
-        self._current_tenant_id: Optional[str] = None
-        self._current_tenant_name: Optional[str] = None
-        
-        self._connection_history: list = []
-        self._lock = asyncio.Lock()
-        self._connection_change_callbacks: list = []
-    
-    def add_connection_change_callback(self, callback):
-        """Add a callback to be called when connection changes."""
-        self._connection_change_callbacks.append(callback)
-    
-    async def _notify_connection_change(self):
-        """Notify all callbacks that connection has changed."""
-        for callback in self._connection_change_callbacks:
-            try:
-                await callback()
-            except Exception as e:
-                logger.error(f"Error in connection change callback: {e}")
-    
-    async def _load_tenant_connection(self, tenant_id: str) -> Optional[Dict[str, Any]]:
+    async def connect(self, connection_string: str) -> Tuple[bool, Optional[str]]:
         """
-        Load connection config from database for specific tenant.
+        Connect to a database using a connection string.
         
         Args:
-            tenant_id: Tenant identifier
+            connection_string: PostgreSQL connection string
             
         Returns:
-            Connection config dict or None
+            Tuple of (success: bool, error_message: Optional[str])
         """
         try:
-            from metadata_db import get_metadata_pool
-            from encryption_service import EncryptionService
+            # Parse connection string (basic validation)
+            # asyncpg handles parsing well, but we might want to extract components for UI
+            # For now, we just pass it to asyncpg
             
-            pool = await get_metadata_pool()
-            if not pool:
-                logger.warning("Metadata database not available")
-                return None
+            # Close existing pool if any
+            if self._pool:
+                await self._pool.close()
+                self._pool = None
             
-            # Load most recent active connection for tenant
-            row = await pool.fetchrow("""
-                SELECT host, port, database_name, username, password, ssl
-                FROM optischema.tenant_connections
-                WHERE tenant_id = $1 AND is_active = true
-                ORDER BY updated_at DESC
-                LIMIT 1
-            """, tenant_id)
-            
-            if row:
-                # Decrypt password
-                encryption_service = EncryptionService()
-                decrypted_password = encryption_service.decrypt(row['password'])
-                
-                return {
-                    'host': row['host'],
-                    'port': row['port'],
-                    'database': row['database_name'],
-                    'user': row['username'],
-                    'password': decrypted_password,
-                    'ssl': row['ssl']
+            # Create new pool
+            pool = await asyncpg.create_pool(
+                connection_string,
+                min_size=2,
+                max_size=10,
+                command_timeout=60,
+                server_settings={
+                    'application_name': 'optischema_slim',
+                    'search_path': 'public'
                 }
-            
-            logger.info(f"No active connection found for tenant {tenant_id}")
-            return None
-            
-        except Exception as e:
-            logger.error(f"Failed to load tenant connection: {e}")
-            return None
-    
-    async def _create_pool(self, config: Dict[str, Any]) -> Pool:
-        """
-        Create a connection pool from config.
-        
-        Args:
-            config: Database configuration
-            
-        Returns:
-            Connection pool
-        """
-        # Prepare SSL configuration
-        ssl_config = None
-        if config.get('ssl', False):
-            ssl_config = 'require'
-        
-        # Create connection pool
-        pool = await asyncpg.create_pool(
-            host=config['host'],
-            port=config['port'],
-            database=config['database'],
-            user=config['user'],
-            password=config['password'],
-            ssl=ssl_config,
-            min_size=2,
-            max_size=10,
-            command_timeout=60,
-            server_settings={
-                'application_name': 'optischema_backend',
-                'search_path': 'public'
-            }
-        )
-        
-        # Test the connection
-        async with pool.acquire() as conn:
-            # Check if pg_stat_statements extension is available
-            extension_exists = await conn.fetchval(
-                "SELECT EXISTS(SELECT 1 FROM pg_available_extensions WHERE name = 'pg_stat_statements')"
             )
             
-            if not extension_exists:
-                await pool.close()
-                raise RuntimeError("pg_stat_statements extension not available")
-            
-            # Check if extension is enabled
-            extension_enabled = await conn.fetchval(
-                "SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'pg_stat_statements')"
-            )
-            
-            if not extension_enabled:
-                # Try to enable the extension
-                try:
-                    await conn.execute("CREATE EXTENSION IF NOT EXISTS pg_stat_statements")
-                    logger.info("pg_stat_statements extension enabled")
-                except Exception as e:
-                    logger.warning(f"Could not enable pg_stat_statements: {e}")
-        
-        return pool
-    
-    async def connect(
-        self,
-        config: Dict[str, Any],
-        *,
-        tenant_id: Optional[str] = None,
-        tenant_name: Optional[str] = None
-    ) -> bool:
-        """
-        Connect to a database for a specific tenant.
-        
-        Args:
-            config: Database configuration dictionary
-            tenant_id: Tenant identifier
-            tenant_name: Tenant name
-            
-        Returns:
-            True if connection successful, False otherwise
-        """
-        async with self._lock:
-            try:
-                # Determine tenant context
-                resolved_tenant_id = str(tenant_id or settings.default_tenant_id)
-                resolved_tenant_name = tenant_name or settings.default_tenant_name
+            # Test connection and extensions
+            async with pool.acquire() as conn:
+                # Detect and cache PostgreSQL version (once per connection)
+                version_num = await conn.fetchval("SHOW server_version_num")
+                if version_num:
+                    self._pg_version = int(version_num)
+                    logger.info(f"Detected PostgreSQL version: {self._pg_version}")
+                else:
+                    # Fallback: try to parse from version string
+                    version_str = await conn.fetchval("SELECT version()")
+                    if version_str:
+                        # Extract version number from string like "PostgreSQL 14.5"
+                        import re
+                        match = re.search(r'PostgreSQL (\d+)\.(\d+)', version_str)
+                        if match:
+                            major, minor = int(match.group(1)), int(match.group(2))
+                            self._pg_version = major * 10000 + minor * 100
+                            logger.info(f"Detected PostgreSQL version (parsed): {self._pg_version}")
                 
-                # Close existing pool for this tenant if any
-                if resolved_tenant_id in self._pools:
-                    await self._pools[resolved_tenant_id].close()
-                    del self._pools[resolved_tenant_id]
-                
-                # Create new connection pool
-                pool = await self._create_pool(config)
-                
-                # Store pool for this tenant
-                self._pools[resolved_tenant_id] = pool
-                
-                # Also update legacy singleton for default tenant (backward compatibility)
-                if resolved_tenant_id == str(settings.default_tenant_id):
-                    if self._current_pool:
-                        await self._current_pool.close()
-                    self._current_pool = pool
-                    self._current_config = config.copy()
-                    self._current_tenant_id = resolved_tenant_id
-                    self._current_tenant_name = resolved_tenant_name
-                
-                # Save connection to database
-                await self._save_tenant_connection(
-                    tenant_id=resolved_tenant_id,
-                    config=config,
-                    tenant_name=resolved_tenant_name
+                # Check for pg_stat_statements
+                extension_exists = await conn.fetchval(
+                    "SELECT EXISTS(SELECT 1 FROM pg_available_extensions WHERE name = 'pg_stat_statements')"
                 )
                 
-                # Add to history
-                self._connection_history.append({
-                    'config': config.copy(),
-                    'connected_at': datetime.utcnow(),
-                    'status': 'connected',
-                    'tenant_id': resolved_tenant_id,
-                    'tenant_name': resolved_tenant_name
-                })
+                if not extension_exists:
+                    logger.warning("pg_stat_statements extension not available on target DB")
+                    # We might still allow connection but warn user? 
+                    # For now, let's proceed but log warning.
                 
-                # Keep only last 10 connections in history
-                if len(self._connection_history) > 10:
-                    self._connection_history = self._connection_history[-10:]
-                
-                # Start collector for this tenant
-                try:
-                    from collector import collector_manager
-                    await collector_manager.start_collector(resolved_tenant_id)
-                except Exception as e:
-                    logger.warning(f"Failed to start collector for tenant {resolved_tenant_id}: {e}")
-                
-                # Notify about connection change
-                await self._notify_connection_change()
-                
-                logger.info(f"Successfully connected tenant {resolved_tenant_id} to {config['host']}:{config['port']}/{config['database']}")
-                return True
-                
+                # Check if enabled
+                if extension_exists:
+                    extension_enabled = await conn.fetchval(
+                        "SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'pg_stat_statements')"
+                    )
+                    if not extension_enabled:
+                        try:
+                            await conn.execute("CREATE EXTENSION IF NOT EXISTS pg_stat_statements")
+                            logger.info("Enabled pg_stat_statements extension")
+                        except Exception as e:
+                            logger.warning(f"Could not enable pg_stat_statements: {e}")
+
+            # Parse connection string to extract components for UI display
+            # Keep the original hostname from connection string for UI/saving
+            parsed_config = self._parse_connection_string(connection_string)
+            original_host = parsed_config.get('host', 'localhost')
+            original_port = parsed_config.get('port', '5432')
+            
+            # Get actual database name and user from the database (but keep original host/port)
+            try:
+                async with pool.acquire() as conn:
+                    # Get the actual database name (most reliable)
+                    actual_db_name = await conn.fetchval("SELECT current_database()")
+                    if actual_db_name:
+                        parsed_config['database'] = actual_db_name
+                    
+                    # Get current user
+                    current_user = await conn.fetchval("SELECT current_user")
+                    if current_user:
+                        parsed_config['username'] = current_user
+                        parsed_config['user'] = current_user
+                    
+                    # Store server IP separately (not overwriting original host)
+                    server_info = await conn.fetchrow("SELECT inet_server_addr(), inet_server_port()")
+                    if server_info:
+                        parsed_config['server_ip'] = server_info['inet_server_addr']
+                        parsed_config['server_port'] = str(server_info['inet_server_port']) if server_info['inet_server_port'] else original_port
             except Exception as e:
-                logger.error(f"Failed to connect to database: {e}")
-                return False
-    
-    async def _save_tenant_connection(
-        self,
-        tenant_id: str,
-        config: Dict[str, Any],
-        tenant_name: str
-    ):
-        """
-        Save tenant connection to database.
-        
-        Args:
-            tenant_id: Tenant identifier
-            config: Connection configuration
-            tenant_name: Tenant name
-        """
-        try:
-            from metadata_db import get_metadata_pool
-            from encryption_service import EncryptionService
+                logger.warning(f"Could not fetch connection details: {e}")
             
-            pool = await get_metadata_pool()
-            if not pool:
-                logger.warning("Metadata database not available, connection not persisted")
-                return
+            # Ensure original host/port are preserved (important for saving connections)
+            parsed_config['host'] = original_host
+            parsed_config['port'] = original_port
             
-            # Encrypt password
-            encryption_service = EncryptionService()
-            encrypted_password = encryption_service.encrypt(config['password'])
+            self._pool = pool
+            self._config = {
+                'connection_string': connection_string,
+                **parsed_config
+            }
             
-            # Save to database
-            await pool.execute("""
-                INSERT INTO optischema.tenant_connections (
-                    tenant_id, name, host, port, database_name, 
-                    username, password, ssl, is_active
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true)
-                ON CONFLICT (tenant_id, name) DO UPDATE SET
-                    host = EXCLUDED.host,
-                    port = EXCLUDED.port,
-                    database_name = EXCLUDED.database_name,
-                    username = EXCLUDED.username,
-                    password = EXCLUDED.password,
-                    ssl = EXCLUDED.ssl,
-                    is_active = true,
-                    updated_at = NOW()
-            """, 
-                tenant_id,
-                tenant_name or "default",
-                config['host'],
-                config['port'],
-                config['database'],
-                config['user'],
-                encrypted_password,
-                config.get('ssl', False)
-            )
+            # Save to storage
+            await set_setting('active_connection', connection_string)
             
-            logger.info(f"Saved connection for tenant {tenant_id} to database")
+            logger.info("Successfully connected to database")
+            return True, None
             
         except Exception as e:
-            logger.error(f"Failed to save tenant connection: {e}")
-    
-    async def get_pool(self, tenant_id: Optional[str] = None) -> Optional[Pool]:
-        """
-        Get connection pool for specific tenant.
-        
-        Args:
-            tenant_id: Tenant identifier (uses default if None)
+            error_msg = str(e)
+            logger.error(f"Failed to connect to database: {e}")
+            return False, error_msg
+
+    async def get_pool(self) -> Optional[Pool]:
+        """Get the current connection pool."""
+        if self._pool:
+            return self._pool
             
-        Returns:
-            Connection pool or None
-        """
-        # Resolve tenant ID
-        if tenant_id is None:
-            from tenant_context import TenantContext
-            tenant_id = TenantContext.get_tenant_id_or_default()
-        
-        # Check if pool exists in memory
-        if tenant_id in self._pools:
-            return self._pools[tenant_id]
-        
-        # Try to load from database and create pool
-        config = await self._load_tenant_connection(tenant_id)
-        if config:
-            try:
-                pool = await self._create_pool(config)
-                self._pools[tenant_id] = pool
-                logger.info(f"Created pool for tenant {tenant_id} from database config")
-                return pool
-            except Exception as e:
-                logger.error(f"Failed to create pool for tenant {tenant_id}: {e}")
-                return None
-        
-        # Fallback to legacy singleton for default tenant
-        if tenant_id == str(settings.default_tenant_id):
-            return self._current_pool
+        # Try to load from storage
+        connection_string = await get_setting('active_connection')
+        if connection_string:
+            logger.info("Restoring connection from storage...")
+            success, _ = await self.connect(connection_string)
+            if success:
+                return self._pool
         
         return None
-    
-    async def get_connection(self, tenant_id: Optional[str] = None) -> Optional[Connection]:
-        """Get a connection from the pool for specific tenant."""
-        pool = await self.get_pool(tenant_id)
+
+    async def get_connection(self) -> Optional[Connection]:
+        """Get a connection from the pool."""
+        pool = await self.get_pool()
         if pool:
             return await pool.acquire()
         return None
+
+    async def disconnect(self):
+        """Disconnect from the current database."""
+        if self._pool:
+            await self._pool.close()
+            self._pool = None
+        
+        # Clear cached version on disconnect
+        self._pg_version = None
+        
+        # We might want to clear the setting too, or keep it for next restart?
+        # Let's keep it in storage, but clear memory.
+        # await set_setting('active_connection', None) 
+        logger.info("Disconnected from database")
     
-    def get_current_config(self) -> Optional[Dict[str, Any]]:
-        """Get the current database configuration (legacy)."""
-        return self._current_config
+    def get_pg_version(self) -> Optional[int]:
+        """Get cached PostgreSQL version number."""
+        return self._pg_version
     
-    def get_connection_history(self) -> list:
-        """Get the connection history."""
-        return self._connection_history.copy()
-    
-    def clear_connection_history(self):
-        """Clear the connection history."""
-        self._connection_history.clear()
-    
-    async def disconnect(self, tenant_id: Optional[str] = None):
+    def _parse_connection_string(self, connection_string: str) -> Dict[str, Any]:
         """
-        Disconnect from database for specific tenant.
+        Parse PostgreSQL connection string to extract components.
+        Supports both postgresql:// and postgres:// schemes.
         
         Args:
-            tenant_id: Tenant identifier (disconnects all if None)
-        """
-        async with self._lock:
-            if tenant_id:
-                # Disconnect specific tenant
-                if tenant_id in self._pools:
-                    await self._pools[tenant_id].close()
-                    del self._pools[tenant_id]
-                    logger.info(f"Disconnected tenant {tenant_id}")
-            else:
-                # Disconnect all tenants
-                for tid, pool in list(self._pools.items()):
-                    await pool.close()
-                self._pools.clear()
-                
-                # Also clear legacy singleton
-                if self._current_pool:
-                    await self._current_pool.close()
-                    self._current_pool = None
-                    self._current_config = None
-                    self._current_tenant_id = None
-                    self._current_tenant_name = None
-                
-                logger.info("Disconnected all tenants")
-            
-            # Stop collectors for disconnected tenants
-            try:
-                from collector import collector_manager
-                if tenant_id:
-                    await collector_manager.stop_collector(tenant_id)
-                else:
-                    # Stop all collectors
-                    for tid in list(collector_manager._collectors.keys()):
-                        await collector_manager.stop_collector(tid)
-            except Exception as e:
-                logger.warning(f"Failed to stop collectors: {e}")
-            
-            # Notify about connection change
-            await self._notify_connection_change()
-    
-    async def test_connection(self, config: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Test a database connection without switching to it.
-        
-        Args:
-            config: Database configuration to test
+            connection_string: PostgreSQL connection string
             
         Returns:
-            Test result dictionary
+            Dictionary with parsed connection components
         """
+        config: Dict[str, Any] = {
+            'host': 'localhost',
+            'port': '5432',
+            'database': 'postgres',
+            'username': 'postgres',
+            'user': 'postgres',
+        }
+        
         try:
-            # Prepare SSL configuration
-            ssl_config = None
-            if config.get('ssl', False):
-                ssl_config = 'require'
+            # Handle postgres:// scheme (should be postgresql:// but some drivers use postgres://)
+            normalized = connection_string
+            if normalized.startswith('postgres://'):
+                normalized = normalized.replace('postgres://', 'postgresql://', 1)
             
-            # Create a temporary connection
-            conn = await asyncpg.connect(
-                host=config['host'],
-                port=config['port'],
-                database=config['database'],
-                user=config['user'],
-                password=config['password'],
-                ssl=ssl_config
-            )
+            # Parse the connection string
+            parsed = urlparse(normalized)
             
-            # Check if pg_stat_statements extension is available
-            extension_exists = await conn.fetchval(
-                "SELECT EXISTS(SELECT 1 FROM pg_available_extensions WHERE name = 'pg_stat_statements')"
-            )
+            if parsed.hostname:
+                config['host'] = parsed.hostname
+            if parsed.port:
+                config['port'] = str(parsed.port)
+            if parsed.username:
+                config['username'] = parsed.username
+                config['user'] = parsed.username
             
-            # Check if extension is enabled
-            extension_enabled = await conn.fetchval(
-                "SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'pg_stat_statements')"
-            )
+            # Database name is in the path (remove leading /)
+            if parsed.path:
+                db_name = parsed.path.lstrip('/')
+                # Remove query parameters if they're in the path (shouldn't happen but handle it)
+                if '?' in db_name:
+                    db_name = db_name.split('?')[0]
+                if db_name:
+                    config['database'] = db_name
             
-            # Get database info
-            db_info = await conn.fetchrow(
-                "SELECT version(), current_database(), current_user"
-            )
-            
-            await conn.close()
-            
-            return {
-                'success': True,
-                'message': 'Connection successful',
-                'details': {
-                    'version': db_info[0],
-                    'database': db_info[1],
-                    'user': db_info[2],
-                    'pg_stat_statements_available': extension_exists,
-                    'pg_stat_statements_enabled': extension_enabled
-                }
-            }
+            # Check for SSL in query parameters
+            if parsed.query:
+                query_params = parse_qs(parsed.query)
+                if 'sslmode' in query_params:
+                    sslmode = query_params['sslmode'][0].lower()
+                    config['ssl'] = sslmode in ('require', 'prefer', 'allow')
             
         except Exception as e:
-            return {
-                'success': False,
-                'message': f'Connection failed: {str(e)}',
-                'details': None
-            }
-    
-    def is_connected(self, tenant_id: Optional[str] = None) -> bool:
-        """Check if tenant is connected to a database."""
-        if tenant_id is None:
-            from tenant_context import TenantContext
-            tenant_id = TenantContext.get_tenant_id_or_default()
+            logger.warning(f"Could not parse connection string: {e}")
+            # Return defaults if parsing fails
         
-        return tenant_id in self._pools or (
-            tenant_id == str(settings.default_tenant_id) and self._current_pool is not None
-        )
+        return config
     
-    async def check_connection_health(self, tenant_id: Optional[str] = None) -> bool:
-        """Check if the connection for specific tenant is healthy."""
-        pool = await self.get_pool(tenant_id)
+    def get_connection_config(self) -> Optional[Dict[str, Any]]:
+        """Get the current connection configuration."""
+        return self._config
+
+    async def check_connection_health(self) -> bool:
+        """Check if the current connection is healthy."""
+        pool = await self.get_pool()
         if not pool:
             return False
         
@@ -473,19 +256,8 @@ class ConnectionManager:
                 await conn.fetchval("SELECT 1")
             return True
         except Exception as e:
-            logger.error(f"Connection health check failed for tenant {tenant_id}: {e}")
-            # Connection is broken, remove it
-            if tenant_id and tenant_id in self._pools:
-                del self._pools[tenant_id]
+            logger.error(f"Connection health check failed: {e}")
             return False
 
-    def get_current_tenant_id(self) -> Optional[str]:
-        """Return the tenant identifier associated with the active connection (legacy)."""
-        return self._current_tenant_id
-
-    def get_current_tenant_name(self) -> Optional[str]:
-        """Return the tenant name for the active connection (legacy)."""
-        return self._current_tenant_name
-
-# Global connection manager instance
+# Global instance
 connection_manager = ConnectionManager()

@@ -13,7 +13,7 @@ class QueryMetrics(BaseModel):
     """Model for PostgreSQL query metrics from pg_stat_statements."""
     
     tenant_id: UUID = Field(..., description="Tenant identifier")
-    query_hash: str = Field(..., description="Hash of the query text")
+    queryid: str = Field(..., description="Postgres Query ID (BigInt as String)")
     query_text: str = Field(..., description="The actual SQL query text")
     total_time: int = Field(..., description="Total time spent executing this query (microseconds)")
     calls: int = Field(..., description="Number of times this query was executed")
@@ -52,7 +52,7 @@ class AnalysisResult(BaseModel):
     
     tenant_id: UUID = Field(..., description="Tenant identifier")
     id: Optional[UUID] = Field(None, description="Unique identifier")
-    query_hash: str = Field(..., description="Hash of the analyzed query")
+    queryid: str = Field(..., description="Postgres Query ID (BigInt as String)")
     query_text: str = Field(..., description="The SQL query text")
     execution_plan: Optional[ExecutionPlan] = Field(None, description="Execution plan analysis")
     analysis_summary: Optional[str] = Field(None, description="AI-generated analysis summary")
@@ -69,7 +69,7 @@ class Recommendation(BaseModel):
     
     tenant_id: UUID = Field(..., description="Tenant identifier")
     id: Optional[UUID] = Field(None, description="Unique identifier")
-    query_hash: str = Field(..., description="Hash of the query this recommendation is for")
+    queryid: str = Field(..., description="Postgres Query ID (BigInt as String)")
     recommendation_type: str = Field(..., description="Type of recommendation (index, rewrite, config)")
     title: str = Field(..., description="Short title for the recommendation")
     description: str = Field(..., description="Detailed description of the recommendation")
@@ -123,7 +123,7 @@ class BenchmarkJob(BaseModel):
 class HotQuery(BaseModel):
     """Model for hot queries (most expensive queries)."""
     
-    query_hash: str = Field(..., description="Hash of the query")
+    queryid: str = Field(..., description="Postgres Query ID (BigInt as String)")
     query_text: str = Field(..., description="The SQL query text")
     total_time: int = Field(..., description="Total execution time")
     calls: int = Field(..., description="Number of calls")
@@ -202,7 +202,7 @@ class AuditLog(BaseModel):
     action_type: str = Field(..., description="Type of action (recommendation_applied, benchmark_run, index_dropped, etc.)")
     user_id: Optional[str] = Field(None, description="User who performed the action")
     recommendation_id: Optional[UUID] = Field(None, description="Related recommendation ID if applicable")
-    query_hash: Optional[str] = Field(None, description="Related query hash if applicable")
+    queryid: Optional[str] = Field(None, description="Related query ID (BigInt as String) if applicable")
     
     # Performance metrics
     before_metrics: Optional[Dict[str, Any]] = Field(None, description="Performance metrics before action")
@@ -255,5 +255,58 @@ class IndexRecommendation(BaseModel):
     recommendation_type: str = Field(..., description="Type of recommendation (drop, analyze)")
     sql_fix: Optional[str] = Field(None, description="SQL to drop the index")
     created_at: Optional[datetime] = Field(None, description="Recommendation creation timestamp")
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TableBloatIssue(BaseModel):
+    """Model for table bloat issues."""
+    
+    schema: str = Field(..., description="Schema name")
+    table: str = Field(..., description="Table name")
+    dead_ratio: float = Field(..., description="Percentage of dead tuples")
+    live_tuples: int = Field(..., description="Number of live tuples")
+    dead_tuples: int = Field(..., description="Number of dead tuples")
+    last_autovacuum: Optional[str] = Field(None, description="Last autovacuum timestamp")
+    vacuum_overdue: bool = Field(..., description="Whether vacuum is overdue")
+    severity: str = Field(..., description="Severity level (low, medium, high)")
+    recommendation: str = Field(..., description="Recommendation text")
+
+
+class IndexIssue(BaseModel):
+    """Model for index issues."""
+    
+    schema: str = Field(..., description="Schema name")
+    table: str = Field(..., description="Table name")
+    index: str = Field(..., description="Index name")
+    scans: int = Field(..., description="Number of index scans")
+    tuples_read: int = Field(..., description="Number of tuples read")
+    tuples_fetched: int = Field(..., description="Number of tuples fetched")
+    size: str = Field(..., description="Human-readable index size")
+    size_bytes: int = Field(..., description="Index size in bytes")
+    severity: str = Field(..., description="Severity level")
+    recommendation: str = Field(..., description="Recommendation text")
+
+
+class ConfigIssue(BaseModel):
+    """Model for configuration issues."""
+    
+    setting: str = Field(..., description="Configuration setting name")
+    current_value: str = Field(..., description="Current value")
+    severity: str = Field(..., description="Severity level (low, medium, high)")
+    issue: str = Field(..., description="Description of the issue")
+    recommendation: str = Field(..., description="Recommendation text")
+
+
+class HealthScanResult(BaseModel):
+    """Model for health scan results."""
+    
+    scan_timestamp: str = Field(..., description="When the scan was performed")
+    health_score: int = Field(..., ge=0, le=100, description="Overall health score (0-100)")
+    table_bloat: Dict[str, Any] = Field(..., description="Table bloat check results")
+    index_bloat: Dict[str, Any] = Field(..., description="Index bloat check results")
+    config_issues: Dict[str, Any] = Field(..., description="Configuration check results")
+    summary: Dict[str, Any] = Field(..., description="Summary statistics")
+    error: Optional[str] = Field(None, description="Error message if scan failed")
     
     model_config = ConfigDict(from_attributes=True) 

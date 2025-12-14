@@ -93,9 +93,16 @@ def identify_hot_queries(metrics: List[QueryMetrics], limit: int = 10) -> List[H
         # Calculate percentage of total database time
         percentage = (total_time / total_db_time * 100) if total_db_time > 0 else 0
         
+        # Use queryid from first metric in group (or generate hash if not available)
+        first_metric = group_metrics[0]
+        queryid = getattr(first_metric, 'queryid', None)
+        if not queryid:
+            # Fallback: generate hash from fingerprint if queryid not available
+            queryid = hashlib.md5(fingerprint.encode()).hexdigest()
+        
         hot_query = HotQuery(
-            query_hash=hashlib.md5(fingerprint.encode()).hexdigest(),
-            query_text=group_metrics[0].query_text,  # Use first query as representative
+            queryid=queryid,
+            query_text=first_metric.query_text,  # Use first query as representative
             total_time=total_time,
             calls=total_calls,
             mean_time=mean_time,
@@ -144,7 +151,7 @@ def calculate_performance_metrics(metrics: List[QueryMetrics]) -> MetricsSummary
     slowest_hot = None
     if slowest_query:
         slowest_hot = HotQuery(
-            query_hash=slowest_query.query_hash,
+            queryid=getattr(slowest_query, 'queryid', hashlib.md5(slowest_query.query_text.encode()).hexdigest()),
             query_text=slowest_query.query_text,
             total_time=slowest_query.total_time,
             calls=slowest_query.calls,
@@ -155,7 +162,7 @@ def calculate_performance_metrics(metrics: List[QueryMetrics]) -> MetricsSummary
     most_called_hot = None
     if most_called_query:
         most_called_hot = HotQuery(
-            query_hash=most_called_query.query_hash,
+            queryid=getattr(most_called_query, 'queryid', hashlib.md5(most_called_query.query_text.encode()).hexdigest()),
             query_text=most_called_query.query_text,
             total_time=most_called_query.total_time,
             calls=most_called_query.calls,
@@ -262,7 +269,8 @@ def analyze_queries(metrics: Optional[List[QueryMetrics]] = None) -> Dict[str, A
     for metric in metrics[:20]:  # Limit to first 20 for performance
         issues = detect_basic_issues(metric.query_text)
         if issues:
-            query_issues[metric.query_hash] = {
+            queryid = getattr(metric, 'queryid', hashlib.md5(metric.query_text.encode()).hexdigest())
+            query_issues[queryid] = {
                 'query_text': metric.query_text,
                 'issues': issues
             }

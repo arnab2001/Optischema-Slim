@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Database, Settings, History, LogOut, CheckCircle, XCircle, Loader, ChevronDown, ChevronUp, AlertTriangle, Activity, RefreshCw } from 'lucide-react'
+import { Database, Settings, History, LogOut, CheckCircle, XCircle, Loader, ChevronDown, ChevronUp, AlertTriangle, Activity, RefreshCw, Star, Trash2 } from 'lucide-react'
+import { SaveConnectionDialog } from './SaveConnectionDialog'
 
 interface ConnectionConfig {
   host: string
@@ -44,6 +45,9 @@ export default function DatabaseSwitcher() {
   } | null>(null)
   const [pgStatInfo, setPgStatInfo] = useState<any>(null)
   const [showPgStatManager, setShowPgStatManager] = useState(false)
+  const [savedConnections, setSavedConnections] = useState<any[]>([])
+  const [showSavedConnections, setShowSavedConnections] = useState(true) // Expanded by default
+  const [showSaveDialog, setShowSaveDialog] = useState(false)
 
   // Fetch pg_stat_statements info
   const fetchPgStatInfo = async () => {
@@ -71,10 +75,39 @@ export default function DatabaseSwitcher() {
     }
   }
 
+  // Fetch saved connections
+  const fetchSavedConnections = async () => {
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
+      const response = await fetch(`${apiUrl}/api/connection/saved`)
+      if (response.ok) {
+        const data = await response.json()
+        const connections = data.connections || []
+        console.log('Fetched saved connections:', connections.length, connections)
+        setSavedConnections(connections)
+        // Auto-expand if there are saved connections
+        if (connections.length > 0) {
+          setShowSavedConnections(true)
+        }
+      } else {
+        const errorText = await response.text()
+        console.error('Failed to fetch saved connections:', response.status, response.statusText, errorText)
+      }
+    } catch (error) {
+      console.error('Failed to fetch saved connections:', error)
+    }
+  }
+
   useEffect(() => {
     fetchConnectionStatus()
     fetchPgStatInfo()
-  }, [])
+    fetchSavedConnections()
+    
+    // Refresh saved connections when dialog opens
+    if (isOpen) {
+      fetchSavedConnections()
+    }
+  }, [isOpen])
 
   const testConnection = async () => {
     setTesting(true)
@@ -181,6 +214,181 @@ export default function DatabaseSwitcher() {
   const loadFromHistory = (historyItem: ConnectionHistory) => {
     setNewConnection(historyItem.config)
     setTestResult(null)
+  }
+
+  const handleSaveCurrentConnection = async (name: string) => {
+    if (!connectionStatus.current_config) {
+      throw new Error("No active connection to save")
+    }
+    
+    const config = connectionStatus.current_config
+    
+    // Extract connection details from connection_string (most reliable)
+    let extractedHost = config.host
+    let extractedPort = config.port || '5432'
+    let extractedUser = config.username || config.user
+    let extractedDb = config.database
+    let extractedPassword = ''
+    let extractedSsl = config.ssl || false
+    
+    if (config.connection_string) {
+      try {
+        // Normalize postgres:// to postgresql:// for URL parsing
+        const normalizedStr = config.connection_string.replace(/^postgres:\/\//, 'postgresql://')
+        const url = new URL(normalizedStr)
+        
+        extractedHost = url.hostname || extractedHost
+        extractedPort = url.port || extractedPort
+        extractedUser = url.username ? decodeURIComponent(url.username) : extractedUser
+        extractedPassword = url.password ? decodeURIComponent(url.password) : ''
+        extractedDb = url.pathname ? url.pathname.replace(/^\//, '') : extractedDb
+        extractedSsl = normalizedStr.includes('sslmode=require') || extractedSsl
+        
+        console.log('Extracted from connection string:', {
+          host: extractedHost,
+          port: extractedPort,
+          user: extractedUser,
+          password: extractedPassword ? '***' : '(empty)',
+          database: extractedDb,
+          ssl: extractedSsl
+        })
+      } catch (e) {
+        console.warn('Could not parse connection string:', e)
+      }
+    }
+    
+    if (!extractedPassword) {
+      throw new Error("Could not extract password from connection. Please reconnect with your credentials.")
+    }
+    
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
+    const savePayload = {
+      name,
+      host: extractedHost,
+      port: extractedPort,
+      database: extractedDb,
+      username: extractedUser,
+      password: extractedPassword,
+      ssl: extractedSsl
+    }
+    
+    console.log('Saving connection:', { ...savePayload, password: '***' })
+    
+    const response = await fetch(`${apiUrl}/api/connection/save`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(savePayload)
+    })
+    
+    if (!response.ok) {
+      let errorMessage = 'Failed to save connection'
+      try {
+        const error = await response.json()
+        errorMessage = error.detail || error.message || error.error || errorMessage
+        // Handle structured error responses
+        if (typeof errorMessage === 'object' && errorMessage.message) {
+          errorMessage = errorMessage.message
+        }
+      } catch (e) {
+        errorMessage = response.statusText || errorMessage
+      }
+      throw new Error(errorMessage)
+    }
+    
+    const result = await response.json()
+    console.log('Connection saved successfully:', result)
+    
+    // Refresh saved connections and connection status
+    await Promise.all([
+      fetchSavedConnections(),
+      fetchConnectionStatus()
+    ])
+    
+    // Show success message
+    alert(`Connection "${name}" saved successfully!`)
+  }
+
+  const handleSwitchToSaved = async (connectionId: number) => {
+    if (loading) return // Prevent double-clicks
+    
+    setLoading(true)
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
+      console.log('Switching to connection ID:', connectionId)
+      
+      const response = await fetch(`${apiUrl}/api/connection/switch/${connectionId}`, {
+        method: 'POST'
+      })
+      
+      if (!response.ok) {
+        let errorMessage = 'Failed to switch connection'
+        try {
+          const error = await response.json()
+          errorMessage = error.detail || error.message || error.error || errorMessage
+          // Handle structured error responses
+          if (typeof errorMessage === 'object' && errorMessage.message) {
+            errorMessage = errorMessage.message
+          }
+        } catch (e) {
+          errorMessage = response.statusText || errorMessage
+        }
+        throw new Error(errorMessage)
+      }
+      
+      const result = await response.json()
+      console.log('Switch successful:', result)
+      
+      // Refresh connection status and saved connections
+      await Promise.all([
+        fetchConnectionStatus(),
+        fetchSavedConnections()
+      ])
+      
+      setIsOpen(false)
+      
+      // Reload page to refresh all data
+      setTimeout(() => {
+        window.location.reload()
+      }, 500) // Small delay to show success
+    } catch (error) {
+      console.error('Failed to switch connection:', error)
+      alert(error instanceof Error ? error.message : 'Failed to switch connection')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDeleteSaved = async (connectionId: number) => {
+    if (!confirm('Are you sure you want to delete this saved connection?')) {
+      return
+    }
+    
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
+      const response = await fetch(`${apiUrl}/api/connection/saved/${connectionId}`, {
+        method: 'DELETE'
+      })
+      
+      if (!response.ok) {
+        let errorMessage = 'Failed to delete connection'
+        try {
+          const error = await response.json()
+          errorMessage = error.detail || error.message || error.error || errorMessage
+        } catch (e) {
+          errorMessage = response.statusText || errorMessage
+        }
+        throw new Error(errorMessage)
+      }
+      
+      await fetchSavedConnections()
+      // If deleted connection was the active one, refresh status
+      if (connectionStatus.saved_connection_id === connectionId) {
+        await fetchConnectionStatus()
+      }
+    } catch (error) {
+      console.error('Failed to delete connection:', error)
+      alert(error instanceof Error ? error.message : 'Failed to delete connection')
+    }
   }
 
   const handleEnablePgStat = async () => {
@@ -296,9 +504,22 @@ export default function DatabaseSwitcher() {
             {/* Current Connection Status */}
             {connectionStatus.connected && connectionStatus.current_config && (
               <div className="mb-4 p-3 bg-green-50/80 border border-green-200 rounded-lg">
-                <div className="flex items-center space-x-2 mb-2">
-                  <CheckCircle className="w-4 h-4 text-green-600" />
-                  <span className="text-sm font-medium text-green-800">Currently Connected</span>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center space-x-2">
+                    <CheckCircle className="w-4 h-4 text-green-600" />
+                    <span className="text-sm font-medium text-green-800">Currently Connected</span>
+                    {connectionStatus.saved_connection_id && (
+                      <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" title="Saved connection" />
+                    )}
+                  </div>
+                  {!connectionStatus.saved_connection_id && (
+                    <button
+                      onClick={() => setShowSaveDialog(true)}
+                      className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                    >
+                      Save
+                    </button>
+                  )}
                 </div>
                 <div className="text-sm text-green-700 space-y-1">
                   <div><strong>Host:</strong> {connectionStatus.current_config.host}:{connectionStatus.current_config.port}</div>
@@ -315,6 +536,86 @@ export default function DatabaseSwitcher() {
                 </button>
               </div>
             )}
+
+            {/* Saved Connections - Always show if there are any */}
+            <div className="mb-4 border-t border-gray-200 pt-3">
+              <div className="flex items-center justify-between mb-2">
+                <button
+                  onClick={() => setShowSavedConnections(!showSavedConnections)}
+                  className="flex items-center space-x-2 text-sm font-medium text-gray-700 hover:text-gray-900 w-full text-left"
+                >
+                  <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+                  <span>Saved Connections ({savedConnections.length})</span>
+                  {showSavedConnections ? <ChevronUp className="w-3 h-3 ml-auto" /> : <ChevronDown className="w-3 h-3 ml-auto" />}
+                </button>
+              </div>
+              
+              {showSavedConnections && (
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {savedConnections.length === 0 ? (
+                    <div className="text-xs text-gray-500 text-center py-4">
+                      No saved connections. Connect to a database and click "Save" to add one.
+                    </div>
+                  ) : (
+                    savedConnections.map((conn) => (
+                      <div
+                        key={conn.id}
+                        className={`p-3 rounded-lg border transition-colors ${
+                          connectionStatus.saved_connection_id === conn.id
+                            ? 'bg-blue-50 border-blue-300 shadow-sm'
+                            : 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <div className="font-semibold text-sm text-gray-900 truncate">{conn.name}</div>
+                              {connectionStatus.saved_connection_id === conn.id && (
+                                <span className="px-1.5 py-0.5 text-xs font-medium bg-blue-200 text-blue-800 rounded">
+                                  Active
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xs text-gray-600 space-y-0.5">
+                              <div className="font-mono truncate">{conn.host}:{conn.port}</div>
+                              <div>Database: <span className="font-medium">{conn.database}</span></div>
+                              <div>User: <span className="font-medium">{conn.username}</span></div>
+                              {conn.last_used_at && (
+                                <div className="text-gray-500 mt-1">
+                                  Last used: {new Date(conn.last_used_at).toLocaleString()}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <button
+                              onClick={() => handleSwitchToSaved(conn.id)}
+                              disabled={loading || connectionStatus.saved_connection_id === conn.id}
+                              className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
+                                connectionStatus.saved_connection_id === conn.id
+                                  ? 'bg-gray-200 text-gray-600 cursor-not-allowed'
+                                  : 'bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed'
+                              }`}
+                              title={connectionStatus.saved_connection_id === conn.id ? "Currently connected" : "Connect to this database"}
+                            >
+                              {connectionStatus.saved_connection_id === conn.id ? 'Active' : 'Connect'}
+                            </button>
+                            <button
+                              onClick={() => handleDeleteSaved(conn.id)}
+                              disabled={loading}
+                              className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded disabled:opacity-50 transition-colors"
+                              title="Delete saved connection"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* pg_stat_statements Manager */}
             {connectionStatus.connected && (
@@ -616,6 +917,19 @@ export default function DatabaseSwitcher() {
           </div>
         </div>
       )}
+
+      {/* Save Connection Dialog */}
+      <SaveConnectionDialog
+        isOpen={showSaveDialog}
+        onClose={() => setShowSaveDialog(false)}
+        onSave={handleSaveCurrentConnection}
+        connectionDetails={connectionStatus.current_config ? {
+          host: connectionStatus.current_config.host,
+          port: connectionStatus.current_config.port,
+          database: connectionStatus.current_config.database,
+          username: connectionStatus.current_config.username || connectionStatus.current_config.user || ''
+        } : null}
+      />
     </div>
   )
 } 

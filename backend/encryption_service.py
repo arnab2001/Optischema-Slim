@@ -20,9 +20,8 @@ class EncryptionService:
         if not encryption_key:
             # Generate a key if not provided (dev only!)
             logger.warning("No ENCRYPTION_KEY found, generating temporary key")
+            logger.warning("⚠️  Set ENCRYPTION_KEY in production! Generated key is not logged for security.")
             encryption_key = Fernet.generate_key().decode()
-            logger.warning(f"Generated key: {encryption_key}")
-            logger.warning("⚠️  Set this as ENCRYPTION_KEY in production!")
         
         # Ensure key is bytes
         if isinstance(encryption_key, str):

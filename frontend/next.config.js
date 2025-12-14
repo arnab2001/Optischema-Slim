@@ -2,20 +2,12 @@
 const nextConfig = {
   async rewrites() {
     // Use Docker service name for containerized environment
-    const backendUrl = 'http://optischema-api:8000';
+    const backendUrl = 'http://optischema-api:8080';
 
     return [
       {
-        source: '/api/metrics/raw',
-        destination: `${backendUrl}/metrics/raw`,
-      },
-      {
-        source: '/api/metrics/historical',
-        destination: `${backendUrl}/metrics/historical`,
-      },
-      {
-        source: '/api/metrics/trends',
-        destination: `${backendUrl}/metrics/trends`,
+        source: '/api/metrics/:path*',
+        destination: `${backendUrl}/api/metrics/:path*`,
       },
       {
         source: '/api/suggestions/latest',
@@ -38,8 +30,8 @@ const nextConfig = {
         destination: `${backendUrl}/suggestions/rollback`,
       },
       {
-        source: '/api/health',
-        destination: `${backendUrl}/health`,
+        source: '/api/health/:path*',
+        destination: `${backendUrl}/api/health/:path*`,
       },
       {
         source: '/api/connection/:path*',

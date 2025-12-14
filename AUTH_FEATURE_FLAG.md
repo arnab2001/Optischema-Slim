@@ -83,7 +83,7 @@ ENABLE_AUTHENTICATION=false
 docker-compose up -d
 
 # Make requests without auth
-curl http://localhost:8000/api/metrics
+curl http://localhost:8080/api/metrics
 # ✅ Works!
 ```
 
@@ -91,7 +91,7 @@ curl http://localhost:8000/api/metrics
 
 ```bash
 # Register a user (works even with auth disabled)
-curl -X POST http://localhost:8000/api/auth/register \
+curl -X POST http://localhost:8080/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{
     "email": "test@example.com",
@@ -102,7 +102,7 @@ curl -X POST http://localhost:8000/api/auth/register \
 # Response: { "access_token": "eyJ...", "token_type": "bearer" }
 
 # Login
-curl -X POST http://localhost:8000/api/auth/login \
+curl -X POST http://localhost:8080/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{
     "email": "test@example.com",
@@ -120,11 +120,11 @@ ENABLE_AUTHENTICATION=true
 docker-compose restart optischema-api
 
 # Now requests need auth
-curl http://localhost:8000/api/metrics
+curl http://localhost:8080/api/metrics
 # ❌ 401 Unauthorized
 
 # With token
-curl http://localhost:8000/api/metrics \
+curl http://localhost:8080/api/metrics \
   -H "Authorization: Bearer eyJ..."
 # ✅ Works!
 ```
@@ -195,7 +195,7 @@ import httpx
 async def test_auth_modes():
     """Test both auth modes."""
     
-    base_url = "http://localhost:8000"
+    base_url = "http://localhost:8080"
     
     # Test with auth disabled
     print("Testing with auth disabled...")
