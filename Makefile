@@ -50,3 +50,7 @@ clean: ## Clean up artifacts and caches
 
 logs: ## Show Docker logs
 	docker compose logs -f
+
+build-landing: ## Build landing page for GitHub Pages
+	@echo "🚀 Building landing page for GitHub Pages..."
+	@bash scripts/build-landing.sh

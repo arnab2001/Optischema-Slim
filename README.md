@@ -1,5 +1,7 @@
-### OptiSchema
+### OptiSchema Slim
 AI-powered PostgreSQL performance: watch real workload, pinpoint hot queries, generate executable fixes, validate in a sandbox, and apply with confidence.
+
+**🌐 [View Landing Page](https://arnab2001.github.io/Optischema-Slim/)** | **📖 [Deployment Guide](DEPLOYMENT.md)** | **📧 [Waitlist Integration](WAITLIST.md)**
 
 ### Local setup (Docker)
 - Prereqs: Docker + Docker Compose

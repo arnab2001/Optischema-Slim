@@ -1,6 +1,22 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Enable static export for GitHub Pages
+  output: process.env.EXPORT_MODE === 'true' ? 'export' : undefined,
+  
+  // GitHub Pages base path (only for export mode)
+  basePath: process.env.EXPORT_MODE === 'true' ? '/Optischema-Slim' : '',
+  
+  // Image optimization must be disabled for static export
+  images: {
+    unoptimized: process.env.EXPORT_MODE === 'true' ? true : false,
+  },
+
   async rewrites() {
+    // Skip rewrites in export mode
+    if (process.env.EXPORT_MODE === 'true') {
+      return [];
+    }
+
     // Use Docker service name for containerized environment
     const backendUrl = 'http://optischema-api:8080';
 
