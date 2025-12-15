@@ -77,31 +77,44 @@ jobs:
         run: |
           cd frontend
           ${{ steps.detect-package-manager.outputs.manager }} ${{ steps.detect-package-manager.outputs.command }}
+      - name: Prepare for static export (move API routes temporarily)
+        run: |
+          cd frontend
+          # Move API routes to a temporary directory during static export
+          if [ -d "app/api" ]; then
+            mkdir -p temp_api_routes
+            mv app/api temp_api_routes/
+          fi
       - name: Build with Next.js (landing page only)
         env:
           EXPORT_MODE: "true"
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          # Skip linting and type checking for faster builds
-          ESLINT_NO_DEV_ERRORS: "true"
-          TYPESCRIPT_NO_DEV_ERRORS: "true"
         run: |
           cd frontend
-          # Build only landing page by temporarily moving other pages
-          mkdir -p .temp-pages
-          # Move non-landing pages temporarily
-          find app -type f -name "page.tsx" ! -path "app/landing/*" -exec mv {} .temp-pages/ \; || true
-          find app -type d -empty -delete || true
-          # Build
-          ${{ steps.detect-package-manager.outputs.runner }} next build --no-lint
-          # Restore moved pages
-          mv .temp-pages/* app/ 2>/dev/null || true
-          rmdir .temp-pages 2>/dev/null || true
-      - name: Copy landing page to root
+          # Skip linting and type checking (already configured in next.config.js)
+          ${{ steps.detect-package-manager.outputs.runner }} next build
+      - name: Restore API routes
+        if: always()
+        run: |
+          cd frontend
+          # Restore API routes after build
+          if [ -d "temp_api_routes/api" ]; then
+            mv temp_api_routes/api app/
+            rm -rf temp_api_routes
+          fi
+      - name: Copy landing page to root for GitHub Pages
         run: |
           cd frontend/out
-          # Copy landing page to root (so /landing becomes /)
-          cp -r landing/* .
+          # Check if landing directory was created during export and copy to root
+          if [ -d "landing" ]; then
+            # Copy landing page contents to root
+            cp -r landing/* .
+            # Also copy landing page to index.html if index.html doesn't exist or we want to ensure landing is the homepage
+            if [ ! -f "index.html" ]; then
+              cp landing/index.html index.html
+            fi
+          fi
           # Create 404.html for SPA routing
           cp index.html 404.html
       - name: Upload artifact

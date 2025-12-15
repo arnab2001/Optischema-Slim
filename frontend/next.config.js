@@ -19,6 +19,8 @@ const nextConfig = {
     ignoreBuildErrors: process.env.EXPORT_MODE === 'true',
   },
 
+  // Static export doesn't support redirects, rewrites, or headers
+
   async rewrites() {
     // Skip rewrites in export mode
     if (process.env.EXPORT_MODE === 'true') {
