@@ -85,6 +85,13 @@ jobs:
         run: |
           cd frontend
           ${{ steps.detect-package-manager.outputs.runner }} next build
+      - name: Copy landing page to root
+        run: |
+          cd frontend/out
+          # Copy landing page to root (so /landing becomes /)
+          cp -r landing/* .
+          # Create 404.html for SPA routing
+          cp index.html 404.html
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
