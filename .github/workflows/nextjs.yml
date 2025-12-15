@@ -106,20 +106,13 @@ jobs:
       - name: Prepare GitHub Pages output (only landing page)
         run: |
           cd frontend/out
-          # Remove all content except the root page (index.html) and landing page
-          # Since Next.js app router creates flat files, landing page is landing.html
-          ls -A | grep -v '^index.html$' | grep -v '^landing.html$' | grep -v '^_next/' | grep -v '^404.html$' | xargs rm -rf 2>/dev/null || true
-          # Also preserve assets that are needed (like _next directory for JS/CSS)
-          if [ -d "_next" ]; then
-            mv _next _next_tmp
-          fi
+          # Remove all HTML pages except index.html and landing.html
+          find . -name "*.html" -not -name "index.html" -not -name "landing.html" -not -name "404.html" -delete
+          # Also remove text files that may have been generated
+          find . -name "*.txt" -delete
           # If we have landing.html, copy it to index.html to serve as the landing page at root
           if [ -f "landing.html" ]; then
             cp landing.html index.html
-          fi
-          # Restore the _next directory
-          if [ -d "_next_tmp" ]; then
-            mv _next_tmp _next
           fi
           # Create 404.html for SPA routing
           cp index.html 404.html
