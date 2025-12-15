@@ -117,7 +117,13 @@ jobs:
             fi
           fi
           # Create 404.html for SPA routing
-          cp index.html 404.html
+          if [ -f "index.html" ]; then
+            cp index.html 404.html
+          else
+            # Create a minimal 404 if index.html doesn't exist
+            echo "<h1>Landing Page</h1>" > index.html
+            echo "<h1>Page not found</h1>" > 404.html
+          fi
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
