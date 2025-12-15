@@ -284,8 +284,8 @@ function WaitlistSection() {
 
       setStatus('success')
       setMessage(data.confirmed 
-        ? 'You\'re already on the list! Check your email.' 
-        : 'Success! Check your email to confirm.')
+        ? 'You\'re already on the list! We\'ll keep you updated.' 
+        : 'Awesome! You\'re on the waitlist. We\'ll notify you when OptiSchema Slim is ready!')
       setEmail('')
     } catch (error) {
       console.error('Waitlist submission error:', error)
