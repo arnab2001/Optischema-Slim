@@ -42,12 +42,8 @@ export default function LandingPage() {
                 rel="noopener noreferrer"
                 className="hidden sm:inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:text-slate-900 transition-all shadow-sm hover:shadow group"
               >
-                <Github className="w-4 h-4 text-slate-500 group-hover:text-slate-900 transition-colors" />
-                <span>Star on GitHub</span>
-                <span className="flex items-center justify-center bg-slate-100 text-slate-600 text-xs py-0.5 px-1.5 rounded-md ml-1 font-mono group-hover:bg-slate-200 transition-colors">
-                  <Star className="w-3 h-3 inline mr-1 fill-current" />
-                  Open Source
-                </span>
+                <Github className="w-4 h-4 text-slate-500" />
+                <span className="text-slate-500">Source (Coming Soon)</span>
               </a>
               <button
                 onClick={scrollToWaitlist}
@@ -55,7 +51,7 @@ export default function LandingPage() {
               >
                 <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-shimmer" />
                 <span className="relative text-sm font-medium flex items-center gap-2">
-                  Request Access <ArrowUpRight className="w-3 h-3 opacity-50" />
+                  Request Early Access <ArrowUpRight className="w-3 h-3 opacity-50" />
                 </span>
               </button>
             </div>
@@ -72,12 +68,16 @@ export default function LandingPage() {
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
           </span>
-          Private Alpha / Waitlist
+          Private Developer Preview
         </div>
 
         <h1 className="max-w-5xl mx-auto text-5xl md:text-7xl font-bold text-slate-900 mb-8 tracking-tight leading-[1.1]">
           The <ShimmerText text="Local-First" /> Doctor<br /> for your PostgreSQL.
         </h1>
+
+        <p className="max-w-3xl mx-auto text-lg md:text-xl font-medium text-slate-600 mb-4 leading-relaxed">
+          For Backend Engineers and DBAs who want faster Postgres without the cloud security risk.
+        </p>
 
         <p className="max-w-2xl mx-auto text-xl text-slate-500 mb-10 leading-relaxed">
           Debug queries, verify indexes with HypoPG, and optimize performance using local LLMs.
@@ -90,8 +90,17 @@ export default function LandingPage() {
             className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all text-lg font-medium shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:-translate-y-0.5"
           >
             <Mail className="w-5 h-5" />
-            Join the Waitlist
+            Request Early Access
           </button>
+
+          {/* Safety Strip */}
+          <div className="flex items-center gap-4 text-xs font-medium text-slate-500 animate-fade-in-up delay-100">
+            <span className="flex items-center gap-1"><Shield className="w-3 h-3" /> Read-only default</span>
+            <span className="text-slate-300">•</span>
+            <span className="flex items-center gap-1"><Shield className="w-3 h-3" /> No data egress</span>
+            <span className="text-slate-300">•</span>
+            <span className="flex items-center gap-1"><Zap className="w-3 h-3" /> Works with pg_stat_statements</span>
+          </div>
 
           {/* Symmetrical Social Proof / Result Badge */}
           <div className="animate-fade-in-up delay-200">
@@ -99,9 +108,10 @@ export default function LandingPage() {
               <div className="bg-green-100 p-1.5 rounded-full">
                 <Zap className="w-3.5 h-3.5 text-green-600" />
               </div>
-              <div className="text-sm text-slate-600">
-                Avg. Optimization: <span className="font-mono font-bold text-slate-800 line-through opacity-50">12,400ms</span>
-                <span className="text-slate-400 mx-2">→</span>
+              <div className="text-sm text-slate-600 flex items-center gap-2">
+                <span className="text-slate-500">Avg. Optimization (Sample):</span>
+                <span className="font-mono font-bold text-red-500 line-through opacity-70">12,400ms</span>
+                <ArrowRight className="w-3 h-3 text-slate-500" />
                 <span className="font-mono font-bold text-green-600">50ms</span>
               </div>
             </div>
@@ -125,11 +135,15 @@ export default function LandingPage() {
                 </p>
               </div>
               {/* Decorative Abstract Graph */}
-              <div className="absolute right-0 bottom-0 w-1/3 h-24 opacity-20">
+              <div className="absolute right-0 bottom-0 w-1/3 h-24 opacity-90">
                 <div className="flex items-end justify-end gap-1 h-full pr-6 pb-6">
-                  {[40, 70, 45, 90, 60, 85].map((h, i) => (
-                    <div key={i} className="w-4 bg-blue-600 rounded-t-sm" style={{ height: `${h}%` }}></div>
-                  ))}
+                  {/* High Cost / Before */}
+                  <div className="w-4 bg-red-400/80 rounded-t-sm" style={{ height: '85%' }}></div>
+                  <div className="w-4 bg-red-300/80 rounded-t-sm" style={{ height: '65%' }}></div>
+                  <div className="w-4 bg-slate-300/80 rounded-t-sm" style={{ height: '45%' }}></div>
+                  {/* Low Cost / After */}
+                  <div className="w-4 bg-green-500 rounded-t-sm" style={{ height: '20%' }}></div>
+                  <div className="w-4 bg-blue-600 rounded-t-sm" style={{ height: '15%' }}></div>
                 </div>
               </div>
             </div>
@@ -139,7 +153,7 @@ export default function LandingPage() {
             <div className="relative z-10">
               <Shield className="w-10 h-10 text-emerald-400 mb-6" />
               <h3 className="text-xl font-bold mb-2 text-slate-900">Offline Capable</h3>
-              <p className="text-slate-400 mb-6">
+              <p className="text-slate-500 mb-6">
                 Your schema and queries never leave your machine. Perfect for strict NDAs.
               </p>
               <div className="flex items-center gap-2 text-xs font-mono text-emerald-400/80 bg-emerald-400/10 w-fit px-2 py-1 rounded border border-emerald-400/20">
@@ -156,11 +170,15 @@ export default function LandingPage() {
               Default to <strong>SQLCoder-7B</strong> via Ollama, or bring your own keys:
             </p>
             <div className="flex flex-wrap gap-2">
-              {['OpenAI', 'DeepSeek', 'Gemini'].map(provider => (
-                <span key={provider} className="px-2 py-1 bg-slate-50 border border-slate-100 text-slate-600 text-xs font-medium rounded-md hover:border-indigo-200 transition-colors cursor-default">
-                  {provider}
-                </span>
-              ))}
+              <span className="px-2.5 py-1.5 bg-slate-100 text-slate-600 text-xs font-medium rounded-md flex items-center gap-1.5 cursor-default group-hover:bg-slate-200 transition-colors">
+                <Zap className="w-3 h-3 text-slate-500" /> OpenAI
+              </span>
+              <span className="px-2.5 py-1.5 bg-slate-100 text-slate-600 text-xs font-medium rounded-md flex items-center gap-1.5 cursor-default group-hover:bg-slate-200 transition-colors">
+                <Activity className="w-3 h-3 text-slate-500" /> DeepSeek
+              </span>
+              <span className="px-2.5 py-1.5 bg-slate-100 text-slate-600 text-xs font-medium rounded-md flex items-center gap-1.5 cursor-default group-hover:bg-slate-200 transition-colors">
+                <Cpu className="w-3 h-3 text-slate-500" /> Gemini
+              </span>
             </div>
           </SpotlightCard>
 
@@ -178,14 +196,14 @@ export default function LandingPage() {
               <div className="w-full md:w-auto bg-white p-4 rounded-xl shadow-sm border border-slate-200/60 flex flex-col gap-3 min-w-[300px] transform md:-rotate-1 hover:rotate-0 transition-transform duration-300">
                 <div className="flex items-center gap-2 mb-1">
                   <div className="w-2 h-2 rounded-full bg-slate-300"></div>
-                  <span className="text-[10px] uppercase font-bold text-slate-400">Connection String</span>
+                  <span className="text-[10px] uppercase font-bold text-slate-500">Connection String</span>
                 </div>
                 <div className="bg-slate-50 border border-slate-200 rounded p-2 flex items-center gap-2">
                   <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                   <code className="text-xs font-mono text-slate-500 truncate">postgres://user:***@localhost:5432/db</code>
                 </div>
                 <div className="flex justify-between items-center mt-1">
-                  <span className="text-[10px] text-slate-400">Auto-detecting...</span>
+                  <span className="text-[10px] text-slate-500">Auto-detecting...</span>
                   <span className="text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full flex items-center gap-1">
                     <Check className="w-3 h-3" /> Ready
                   </span>
@@ -204,8 +222,8 @@ export default function LandingPage() {
           <p className="text-slate-500">How you will deploy OptiSchema when the alpha drops.</p>
         </div>
 
-        <div className="rounded-xl overflow-hidden shadow-2xl bg-[#1e1e1e] font-mono text-sm relative border border-slate-800">
-          <div className="bg-[#252525] px-4 py-3 flex items-center gap-2 border-b border-[#333]">
+        <div className="rounded-xl overflow-hidden shadow-2xl bg-[#1e1e1e] font-mono text-sm relative border border-slate-800 ring-1 ring-white/10">
+          <div className="bg-[#252525] px-4 py-4 flex items-center gap-2 border-b border-[#333]">
             <div className="flex gap-2">
               <div className="w-3 h-3 rounded-full bg-[#FF5F56]"></div>
               <div className="w-3 h-3 rounded-full bg-[#FFBD2E]"></div>
@@ -237,7 +255,7 @@ export default function LandingPage() {
           <div className="flex gap-6 text-sm font-medium text-slate-500">
             <a href="https://github.com/arnab2001/Optischema-Slim" target="_blank" className="hover:text-blue-600 transition-colors">GitHub</a>
             <span className="text-slate-300">|</span>
-            <span className="text-slate-400">Built for developers</span>
+            <span className="text-slate-500">Built for developers</span>
           </div>
         </div>
       </footer>
@@ -395,11 +413,11 @@ function WaitlistSection() {
           <Mail className="w-8 h-8" />
         </div>
 
-        <h2 className="text-3xl font-bold mb-4 text-slate-900">
-          Get Early Access
+        <h2 className="text-2xl font-bold mb-3 text-slate-900">
+          Request Early Access
         </h2>
-        <p className="text-lg text-slate-500 mb-8 max-w-lg mx-auto">
-          We are currently in active development. Join the waitlist to get notified when we drop the first Docker image.
+        <p className="text-slate-500 mb-8 max-w-md mx-auto">
+          We are polishing the v1 Docker image. Join the waitlist to get the release candidate before we open the repository to the public.
         </p>
 
         <form onSubmit={handleSubmit} className="max-w-md mx-auto relative">
@@ -412,13 +430,13 @@ function WaitlistSection() {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="developer@example.com"
                 disabled={status === 'loading' || status === 'success'}
-                className="w-full pl-5 pr-14 py-4 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all disabled:opacity-50 font-mono text-sm text-slate-800 shadow-sm"
+                className="w-full pl-5 pr-14 py-4 bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all disabled:opacity-50 font-mono text-sm text-slate-800 shadow-sm"
                 required
               />
               <button
                 type="submit"
                 disabled={status === 'loading' || status === 'success'}
-                className="absolute right-2 top-2 bottom-2 px-4 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors disabled:bg-slate-400 flex items-center justify-center shadow-md"
+                className="absolute right-2 top-2 bottom-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-slate-400 flex items-center justify-center shadow-md"
               >
                 {status === 'loading' ? (
                   <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -459,7 +477,7 @@ export function OptiSchemaLogo() {
         <span className="text-xl font-bold tracking-tight text-slate-900 font-mono">
           OptiSchema
         </span>
-        <span className="text-xl font-light text-slate-400 font-mono">
+        <span className="text-xl font-extrabold text-slate-400 font-mono">
           ::
         </span>
         <span className="text-xl font-bold text-blue-600 font-mono">

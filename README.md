@@ -1,152 +1,98 @@
-### OptiSchema Slim
-AI-powered PostgreSQL performance: watch real workload, pinpoint hot queries, generate executable fixes, validate in a sandbox, and apply with confidence.
+<div align="center">
+  <img src="frontend/public/image.png" alt="OptiSchema Logo" height="120">
+  <p><strong>The Local-First Doctor for your PostgreSQL.</strong></p>
 
-**🌐 [View Landing Page](https://arnab2001.github.io/Optischema-Slim/)** | **📖 [Deployment Guide](DEPLOYMENT.md)** | **📧 [Waitlist Integration](WAITLIST.md)**
+  <a href="https://github.com/arnab2001/Optischema-Slim/blob/main/LICENSE">
+    <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License">
+  </a>
+  <a href="#">
+    <img src="https://img.shields.io/badge/Docker-Ready-blue?logo=docker" alt="Docker">
+  </a>
+  <a href="#">
+    <img src="https://img.shields.io/badge/Status-Alpha-orange" alt="Status">
+  </a>
+  <a href="#">
+    <img src="https://img.shields.io/badge/Privacy-100%25-green" alt="Privacy">
+  </a>
+</div>
 
-### Local setup (Docker)
-- Prereqs: Docker + Docker Compose
+<!-- <img src="docs/screenshot.png" alt="OptiSchema Dashboard" width="100%" style="border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.2);"> -->
 
-1) Start core stack (DB + API + UI)
+<br>
+
+## Why OptiSchema Slim?
+
+*   **Privacy First**: Your schema and queries never leave localhost.
+*   **Simulation Engine**: Verify index suggestions with HypoPG before touching production.
+*   **Model Agnostic**: Use Ollama (SQLCoder) locally, or bring your own OpenAI/DeepSeek keys.
+
+## Quick Start (30 Seconds)
+
 ```bash
-docker compose up --build
-```
-- UI: http://localhost:3000
-- API: http://localhost:8080/docs
+# 1. Clone the repo
+git clone https://github.com/arnab2001/Optischema-Slim.git
 
-2) Optional: Start isolated sandbox Postgres (for safe benchmarks)
-```bash
-# Simple
-docker compose up -d postgres_sandbox
+# 2. Run with Docker
+docker-compose up -d
 
-# Or with profile
-# docker compose --profile sandbox up -d postgres_sandbox
-```
-- The backend connects to sandbox via `REPLICA_DATABASE_URL` (already set in compose)
-
-3) Environment variables (AI)
-- LLM provider: `LLM_PROVIDER=gemini` (default)
-- Keys (read at runtime; do not hardcode): `GEMINI_API_KEY`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`
-- Provide via `.env` or shell export before `docker compose up`
-
-### Environment (.env) setup
-1) Create an env file from the example
-```bash
-cp .env.example .env
-```
-2) Open `.env` and fill in your values (leave AI keys blank if you won’t use AI features):
-```dotenv
-# Database Configuration
-DATABASE_URL=postgresql://optischema:optischema_pass@postgres:5432/optischema
-POSTGRES_PASSWORD=optischema_pass
-POSTGRES_DB=optischema
-POSTGRES_USER=optischema
-
-# OpenAI / Gemini / DeepSeek (optional)
-OPENAI_API_KEY=
-OPENAI_MODEL=gpt-4o
-GEMINI_API_KEY=
-DEEPSEEK_API_KEY=
-LLM_PROVIDER=gemini  # gemini | openai | deepseek
-
-# WebSocket Configuration
-UI_WS_URL=ws://localhost:8080/ws
-
-# Backend Configuration
-BACKEND_HOST=0.0.0.0
-BACKEND_PORT=8080
-BACKEND_RELOAD=true
-
-# Frontend Configuration
-FRONTEND_HOST=0.0.0.0
-FRONTEND_PORT=3000
-
-# Development Configuration
-ENVIRONMENT=development
-DEBUG=true
-LOG_LEVEL=INFO
-
-# Cache Configuration
-CACHE_TTL=3600
-CACHE_SIZE=1000
-
-# Analysis Configuration
-POLLING_INTERVAL=30
-TOP_QUERIES_LIMIT=10
-ANALYSIS_INTERVAL=60
-
-# Sandbox Configuration
-SANDBOX_DATABASE_URL=postgresql://sandbox:sandbox_pass@postgres_sandbox:5432/sandbox
-SANDBOX_POSTGRES_PASSWORD=sandbox_pass
-SANDBOX_POSTGRES_DB=sandbox
-SANDBOX_POSTGRES_USER=sandbox
-REPLICA_DATABASE_URL=postgresql://sandbox:sandbox_pass@postgres_sandbox:5432/sandbox
-REPLICA_ENABLED=true
-```
-3) Start services
-```bash
-docker compose up --build
-```
-Security note: never commit `.env` with real keys. Use placeholders in `.env.example` only.
-
-### Feature guide
-- Dashboard
-  - Live hot queries (pg_stat_statements), KPI banners, latency trends
-  - Filters, sorting, and query details panel
-  - Data source badge: “Sampled”/“Replica” where applicable
-- AI Suggestions
-  - Explain-plan analysis → SQL patch (e.g., CREATE INDEX CONCURRENTLY) + rationale + risk
-  - Cached responses; traceable suggestion metadata
-- Sandbox Benchmark
-  - Run EXPLAIN ANALYZE before/after in temp schema or read-replica
-  - Shows Δ latency and Δ buffers; safe by default
-- Apply / Rollback / Audit
-  - Whitelisted DDL; rollback SQL generated; immutable audit trail
-- Index Advisor
-  - Suggests indexes for high-impact patterns; integrates with apply flow
-- Connection Management
-  - Postgres or RDS; read-only by default; enable pg_stat_statements helper
-
-### How it works
-1) Observe: rank queries via pg_stat_statements total_exec_time
-2) Analyze: EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) + plan parser + heuristics
-3) Suggest: rules + LLM propose safe patches with rationale and risk
-4) Validate: sandbox benchmark for before/after deltas
-5) Ship: apply with rollback and audit logging
-
-### Local development (alt)
-```bash
-# Backend (FastAPI)
-cd backend
-pip install -r requirements.txt
-uvicorn main:app --host 0.0.0.0 --port 8080 --reload
-
-# Frontend (Next.js)
-cd ../frontend
-npm install
-npm run dev
+# 3. Open Dashboard
+# http://localhost:3000
 ```
 
-### Sandbox tips
-- Default DB: container `optischema-sandbox` on 5433 (internal 5432)
-- Compose profile: `docker compose --profile sandbox up -d postgres_sandbox`
-- Backend auto-points to sandbox via `REPLICA_DATABASE_URL`
+## Features
 
-### Safety and privacy
-- Read-only by default; least-privilege connection
-- Whitelisted DDL only (… CONCURRENTLY, IF (NOT) EXISTS)
-- PII-safe mode and cache controls available
+*   **Real-time Monitoring**: Heatmaps and latency tracking via `pg_stat_statements`.
+*   **AI Analysis**: Context-aware suggestions using your schema and table stats.
+*   **Cost Verification**: Compare EXPLAIN costs (Original vs. Virtual Index) side-by-side.
 
-### Challenges faced
-Building reliable, safe, and actionable database optimization surfaced a few recurring challenges:
-- Signal vs noise in metrics: pg_stat_statements can include system/one-off queries; we fingerprint/dedupe and filter aggressively.
-- Plan parsing fidelity: EXPLAIN JSON fields vary by PostgreSQL versions; we normalize and guard for missing values.
-- Safe DDL at scale: CREATE INDEX can lock tables; we enforce CONCURRENTLY and idempotent IF (NOT) EXISTS, plus rollback SQL.
-- Honest benchmarks: warm caches, cross‑AZ RTT, and variance can skew results; we standardize runs and report Δ latency/buffers.
-- Data privacy: prompts and outputs must avoid sensitive payloads; we support PII‑safe mode and controllable caching.
-- LLM determinism/cost: responses are cached with strict schemas and fallbacks to heuristics for resilience and cost control.
-- Replica/sandbox drift: tag data sources (Sampled/Replica) and surface caveats when schemas or statistics diverge.
+## Architecture
 
-### Troubleshooting
-- If frontend can’t reach API, ensure `optischema-api` is healthy and `NEXT_PUBLIC_API_URL` points to it
-- If no queries appear, verify pg_stat_statements enabled in your DB
-- For AI-backed features, export a provider key (no hardcoding)
+The system follows a **Collect → Analyze → Simulate** pipeline designed for distinct safety and performance guarantees:
+
+*   **Frontend**: **Next.js 15** (App Router) with Shadcn UI & Recharts for real-time visualization.
+*   **Backend**: **FastAPI** paired with AsyncPG for high-conformance, non-blocking I/O.
+*   **Core Engine**:
+    *   **Metric Collection**: Ingests `pg_stat_statements` to fingerprint and rank queries by Total Time and IO.
+    *   **Context Engine**: Enriches queries with live schema definitions, indices, and table statistics (tuple counts, bloat).
+    *   **AI Analysis**: Router sends sanitized context to the configure LLM (Local/Cloud) to synthesize optimization strategies.
+    *   **HypoPG Simulation**: Creates *virtual indexes* in a transient session to verify `EXPLAIN` cost reductions before suggesting them.
+
+## Configuration / LLM Setup
+
+<details>
+  <summary>Click to view Configuration Details</summary>
+
+### Environment Setup
+
+1.  Create a `.env` file from the example:
+    ```bash
+    cp .env.example .env
+    ```
+
+2.  **To use Ollama**:
+    *   Install Ollama and pull the model: `ollama pull sqlcoder:7b`
+    *   Set `LLM_PROVIDER=ollama` in your `.env`.
+    *   Ensure OptiSchema can reach your host (typically `http://host.docker.internal:11434`).
+
+3.  **To use Cloud Models**:
+    *   Add your `OPENAI_API_KEY`, `GEMINI_API_KEY`, or `DEEPSEEK_API_KEY` to the `.env` file.
+    *   Set `LLM_PROVIDER` accordingly (e.g., `openai`, `gemini`).
+
+</details>
+
+## Roadmap / Status
+
+*   ✅ Core Metrics
+*   ✅ HypoPG Integration
+*   🚧 Health Scan (In Progress)
+*   🚧 History Persistence
+
+## Contributing
+
+PRs are welcome! Please check out the [backend/services](backend/services) to see how we handle different components.
+
+---
+
+<div align="center">
+  <sub>Built with ❤️ for the PostgreSQL Community</sub>
+</div>
