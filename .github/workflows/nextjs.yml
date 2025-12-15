@@ -103,15 +103,16 @@ jobs:
             mv temp_api_routes/api app/
             rm -rf temp_api_routes
           fi
-      - name: Copy landing page to root for GitHub Pages
+      - name: Prepare GitHub Pages output (only landing page)
         run: |
           cd frontend/out
-          # Check if landing directory was created during export and copy to root
+          # Remove all content except landing page
+          ls -A | grep -v '^landing$' | xargs rm -rf 2>/dev/null || true
+          # Copy landing page contents to root
           if [ -d "landing" ]; then
-            # Copy landing page contents to root
             cp -r landing/* .
-            # Also copy landing page to index.html if index.html doesn't exist or we want to ensure landing is the homepage
-            if [ ! -f "index.html" ]; then
+            # Ensure landing page is available as index.html
+            if [ -f "landing/index.html" ]; then
               cp landing/index.html index.html
             fi
           fi
