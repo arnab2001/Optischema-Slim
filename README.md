@@ -12,13 +12,23 @@
     <img src="https://img.shields.io/badge/Status-Alpha-orange" alt="Status">
   </a>
   <a href="#">
+    <img src="https://img.shields.io/badge/WIP-Work%20InProgress-yellow" alt="Work in Progress">
+  </a>
+  <a href="#">
     <img src="https://img.shields.io/badge/Privacy-100%25-green" alt="Privacy">
+  </a>
+  <a href="#">
+    <img src="https://img.shields.io/badge/Status-Private_Alpha-red" alt="Status">
   </a>
 </div>
 
 <!-- <img src="docs/screenshot.png" alt="OptiSchema Dashboard" width="100%" style="border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.2);"> -->
 
-<br>
+
+**🚧 We are currently finalizing the v1.0 Docker Image.**
+Building from source works, but it requires manual config.
+
+**[👉 Join the Waitlist](https://arnab2001.github.io/Optischema-Slim/)** to get the polished, zero-config Docker image when it drops.
 
 ## Why OptiSchema Slim?
 
@@ -86,6 +96,8 @@ The system follows a **Collect → Analyze → Simulate** pipeline designed for 
 *   ✅ HypoPG Integration
 *   🚧 Health Scan (In Progress)
 *   🚧 History Persistence
+
+**Status**: We are currently optimizing the Docker image for the public release. [Join the Waitlist](https://arnab2001.github.io/Optischema-Slim/) to get the v1 image.
 
 ## Contributing
 
