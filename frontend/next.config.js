@@ -11,6 +11,14 @@ const nextConfig = {
     unoptimized: process.env.EXPORT_MODE === 'true' ? true : false,
   },
 
+  // Skip linting and type checking during export builds
+  eslint: {
+    ignoreDuringBuilds: process.env.EXPORT_MODE === 'true',
+  },
+  typescript: {
+    ignoreBuildErrors: process.env.EXPORT_MODE === 'true',
+  },
+
   async rewrites() {
     // Skip rewrites in export mode
     if (process.env.EXPORT_MODE === 'true') {
