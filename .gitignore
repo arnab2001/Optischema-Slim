@@ -34,6 +34,24 @@ MANIFEST
 .env.production.local
 .env.backup
 .env.*.backup
+.env.local.example
+*.local.example
+
+# Documentation (keep only key top-level files)
+*.md
+!README.md
+!LICENSE
+!CODE_OF_CONDUCT.md
+!CONTRIBUTING.md
+.env.local.example
+*.local.example
+
+# Documentation (keep only key top-level files)
+*.md
+!README.md
+!LICENSE
+!CODE_OF_CONDUCT.md
+!CONTRIBUTING.md
 .env.prod
 .env.production
 .env.staging
