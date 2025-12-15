@@ -446,13 +446,26 @@ function WaitlistSection() {
 
 export function OptiSchemaLogo() {
   return (
-    <div className="flex items-center gap-2 select-none">
-      <span className="text-xl font-bold tracking-tight text-slate-900 font-sans">
-        OptiSchema
-      </span>
-      <span className="px-2 py-0.5 mt-1 rounded-full bg-blue-50 border border-blue-100 text-blue-600 text-[10px] font-bold uppercase tracking-wider font-mono">
-        Slim
-      </span>
+    <div className="flex items-center gap-3 select-none group">
+      {/* The Icon: Stylized Postgres Cast Operator */}
+      <div className="flex gap-[3px]">
+        <div className="w-1.5 h-1.5 bg-blue-600 rounded-sm"></div>
+        <div className="w-1.5 h-1.5 bg-blue-600 rounded-sm opacity-50"></div>
+        <div className="w-1.5 h-1.5 bg-blue-600 rounded-sm"></div>
+        <div className="w-1.5 h-1.5 bg-blue-600 rounded-sm opacity-50"></div>
+      </div>
+
+      <div className="flex items-baseline gap-0.5">
+        <span className="text-xl font-bold tracking-tight text-slate-900 font-mono">
+          OptiSchema
+        </span>
+        <span className="text-xl font-light text-slate-400 font-mono">
+          ::
+        </span>
+        <span className="text-xl font-bold text-blue-600 font-mono">
+          slim
+        </span>
+      </div>
     </div>
   )
 }
