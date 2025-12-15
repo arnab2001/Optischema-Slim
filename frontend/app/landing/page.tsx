@@ -4,7 +4,7 @@ import Link from 'next/link'
 import {
   Database, Zap, Shield, Github, Mail, CheckCircle2,
   AlertCircle, Activity, Cpu, ArrowUpRight, Check,
-  ArrowRight
+  ArrowRight, Star
 } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 
@@ -28,29 +28,26 @@ export default function LandingPage() {
       </div>
 
       {/* Navigation */}
-      <nav className="border-b border-slate-200/60 bg-white/70 backdrop-blur-xl sticky top-0 z-50">
+      {/* Navigation */}
+      <nav className="fixed w-full top-0 z-50 transition-all duration-300 border-b border-white/10 bg-white/50 backdrop-blur-md supports-[backdrop-filter]:bg-white/20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            <div className="flex items-center gap-3 group cursor-default">
-              <div className="relative">
-                <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg blur opacity-25 group-hover:opacity-75 transition duration-200"></div>
-                <div className="relative w-8 h-8 bg-white rounded-lg flex items-center justify-center border border-slate-100">
-                  <Database className="w-4 h-4 text-blue-600" />
-                </div>
-              </div>
-              <span className="text-lg font-bold tracking-tight text-slate-900">
-                OptiSchema <span className="text-slate-500 font-medium">Slim</span>
-              </span>
+            <div className="cursor-default">
+              <OptiSchemaLogo />
             </div>
-            <div className="flex items-center gap-6">
+            <div className="flex items-center gap-4">
               <a
                 href="https://github.com/arnab2001/Optischema-Slim"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="hidden sm:flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors"
+                className="hidden sm:inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:text-slate-900 transition-all shadow-sm hover:shadow group"
               >
-                <Github className="w-4 h-4" />
-                <span className="group-hover:underline">GitHub</span>
+                <Github className="w-4 h-4 text-slate-500 group-hover:text-slate-900 transition-colors" />
+                <span>Star on GitHub</span>
+                <span className="flex items-center justify-center bg-slate-100 text-slate-600 text-xs py-0.5 px-1.5 rounded-md ml-1 font-mono group-hover:bg-slate-200 transition-colors">
+                  <Star className="w-3 h-3 inline mr-1 fill-current" />
+                  Open Source
+                </span>
               </a>
               <button
                 onClick={scrollToWaitlist}
@@ -141,7 +138,7 @@ export default function LandingPage() {
           <SpotlightCard className="bg-[#0F172A] border-slate-800 group">
             <div className="relative z-10">
               <Shield className="w-10 h-10 text-emerald-400 mb-6" />
-              <h3 className="text-xl font-bold mb-2 text-white">Offline Capable</h3>
+              <h3 className="text-xl font-bold mb-2 text-slate-900">Offline Capable</h3>
               <p className="text-slate-400 mb-6">
                 Your schema and queries never leave your machine. Perfect for strict NDAs.
               </p>
@@ -443,6 +440,19 @@ function WaitlistSection() {
           )}
         </form>
       </div>
+    </div>
+  )
+}
+
+export function OptiSchemaLogo() {
+  return (
+    <div className="flex items-center gap-2 select-none">
+      <span className="text-xl font-bold tracking-tight text-slate-900 font-sans">
+        OptiSchema
+      </span>
+      <span className="px-2 py-0.5 mt-1 rounded-full bg-blue-50 border border-blue-100 text-blue-600 text-[10px] font-bold uppercase tracking-wider font-mono">
+        Slim
+      </span>
     </div>
   )
 }
