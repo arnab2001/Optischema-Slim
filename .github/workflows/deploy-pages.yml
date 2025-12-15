@@ -35,9 +35,13 @@ jobs:
           npm ci
       
       - name: Build landing page
+        env:
+          EXPORT_MODE: "true"
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
           cd frontend
-          EXPORT_MODE=true npm run build
+          npm run build
       
       - name: Setup Pages
         uses: actions/configure-pages@v4
