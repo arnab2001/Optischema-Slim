@@ -1,11 +1,8 @@
+
 'use client'
 
 import Link from 'next/link'
-import {
-  Database, Zap, Shield, Github, Mail, CheckCircle2,
-  AlertCircle, Activity, Cpu, ArrowUpRight, Check,
-  ArrowRight, Star
-} from 'lucide-react'
+import { ArrowRight, CheckCircle2, ChevronRight, Terminal, Zap, Shield, Activity, Cpu, Mail, Star, Github, ArrowUpRight, Check, X, AlertCircle, Database } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 
 export default function LandingPage() {
@@ -19,15 +16,36 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] text-slate-900 selection:bg-indigo-500/20 selection:text-indigo-900 font-sans overflow-x-hidden">
+      {/* Noise Overlay */}
+      <div className="fixed inset-0 z-[9999] pointer-events-none opacity-[0.03] mix-blend-multiply"
+        style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")` }}
+      />
 
-      {/* 1. Dynamic Background Grid */}
-      <div className="fixed inset-0 z-0 pointer-events-none">
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
+      {/* 1. Dynamic Background Grid with Beams */}
+      <div className="fixed inset-0 z-0 pointer-events-none bg-slate-50">
+
+        {/* Base Grid - Increased Opacity */}
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]" />
+
+        {/* Radial Spotlight */}
+        <div className="absolute inset-0 bg-[radial-gradient(circle_800px_at_50%_200px,#C9EBFF,transparent)] opacity-20" />
+
+        {/* Accent Patches (Restored) */}
         <div className="absolute left-0 right-0 top-0 -z-10 m-auto h-[310px] w-[310px] rounded-full bg-blue-400 opacity-20 blur-[100px]"></div>
         <div className="absolute right-0 bottom-0 -z-10 h-[310px] w-[310px] rounded-full bg-indigo-400 opacity-20 blur-[100px]"></div>
+
+        {/* THE NEW BEAMS: Animated flowing lines */}
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute top-[20%] left-0 h-[1px] w-full animate-beam-horizontal bg-gradient-to-r from-transparent via-blue-400/50 to-transparent" />
+          <div className="absolute top-[40%] left-0 h-[1px] w-full animate-beam-horizontal delay-1000 bg-gradient-to-r from-transparent via-indigo-400/50 to-transparent" />
+          <div className="absolute top-0 left-[20%] w-[1px] h-full animate-beam-vertical delay-500 bg-gradient-to-b from-transparent via-blue-400/50 to-transparent" />
+          <div className="absolute top-0 left-[80%] w-[1px] h-full animate-beam-vertical delay-2000 bg-gradient-to-b from-transparent via-indigo-400/50 to-transparent" />
+        </div>
+
+        {/* Vignette */}
+        <div className="absolute inset-0 bg-gradient-to-t from-white via-transparent to-transparent" />
       </div>
 
-      {/* Navigation */}
       {/* Navigation */}
       <nav className="fixed w-full top-0 z-50 transition-all duration-300 border-b border-white/10 bg-white/50 backdrop-blur-md supports-[backdrop-filter]:bg-white/20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -112,6 +130,7 @@ export default function LandingPage() {
             </button>
 
             {/* 2. Secondary: The "Terminal Source" Button */}
+            {/* 2. Secondary: The "Terminal Source" Button */}
             <a
               href="https://github.com/arnab2001/Optischema-Slim"
               target="_blank"
@@ -130,6 +149,28 @@ export default function LandingPage() {
                 </div>
               </div>
             </a>
+          </div>
+
+          {/* Ecosystem Strip */}
+          <div className="mt-2 mb-6 flex flex-col items-center gap-4 animate-fade-in-up delay-200">
+            <p className="text-xs font-semibold tracking-widest text-slate-400 uppercase">
+              Works seamlessly with
+            </p>
+            <div className="flex items-center gap-8 opacity-50 grayscale hover:grayscale-0 transition-all duration-500">
+              {/* Simple Text Logos (Or use SVGs if you have them) */}
+              <span className="text-lg font-bold text-slate-600 flex items-center gap-2">
+                PostgreSQL
+              </span>
+              <span className="text-lg font-bold text-slate-600 flex items-center gap-2">
+                Docker
+              </span>
+              <span className="text-lg font-bold text-slate-600 flex items-center gap-2">
+                Supabase
+              </span>
+              <span className="text-lg font-bold text-slate-600 flex items-center gap-2">
+                Neon
+              </span>
+            </div>
           </div>
 
           {/* Safety Strip */}
@@ -208,7 +249,7 @@ export default function LandingPage() {
             </div>
           </SpotlightCard>
 
-          {/* Zero Config Card - Fixed Whitespace */}
+          {/* Zero Config Card-Fixed Whitespace */}
           <SpotlightCard className="md:col-span-2 bg-gradient-to-br from-indigo-50/50 to-blue-50/50 flex flex-col justify-center">
             <div className="flex flex-col md:flex-row items-center gap-8 h-full">
               <div className="flex-1">
@@ -242,7 +283,7 @@ export default function LandingPage() {
       </section>
 
       {/* Terminal Section */}
-      <section className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
+      <section className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
         <div className="text-center mb-12">
           <h2 className="text-3xl font-bold text-slate-900 mb-4">The Future Workflow</h2>
           <p className="text-slate-500">How you will deploy OptiSchema when the alpha drops.</p>
@@ -270,13 +311,13 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-slate-200 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 flex flex-col md:flex-row justify-between items-center gap-4">
+      <footer className="relative z-10 border-t border-slate-200 bg-white">
+        <div className="max-w-7xl mx-auto px-1 sm:px-2 lg:px-4 py-6 flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-slate-900 rounded-md flex items-center justify-center">
-              <Database className="w-3 h-3 text-white" />
-            </div>
-            <span className="font-semibold text-slate-700 text-sm">OptiSchema Slim © 2024</span>
+
+            <OptiSchemaLogo />
+
+            {/* <span className="font-semibold text-slate-700 text-sm">OptiSchema Slim © 2024</span> */}
           </div>
           <div className="flex gap-6 text-sm font-medium text-slate-500">
             <a href="https://github.com/arnab2001/Optischema-Slim" target="_blank" className="hover:text-blue-600 transition-colors">GitHub</a>
@@ -316,13 +357,13 @@ function SpotlightCard({ children, className = "" }: { children: React.ReactNode
       onMouseMove={handleMouseMove}
       onMouseEnter={() => setIsFocused(true)}
       onMouseLeave={() => setIsFocused(false)}
-      className={`relative rounded-2xl border border-slate-200 bg-white p-8 overflow-hidden transition-shadow hover:shadow-lg ${className}`}
+      className={`relative rounded-2xl border border-slate-200 bg-white p-8 overflow-hidden transition-shadow hover:shadow-lg ${className} `}
     >
       <div
         className="pointer-events-none absolute -inset-px opacity-0 transition duration-300"
         style={{
           opacity: isFocused ? 1 : 0,
-          background: `radial-gradient(600px circle at ${position.x}px ${position.y}px, rgba(59, 130, 246, 0.06), transparent 40%)`,
+          background: `radial-gradient(600px circle at ${position.x}px ${position.y}px, rgba(59, 130, 246, 0.06), transparent 40 %)`,
         }}
       />
       <div className="relative h-full">{children}</div>
@@ -370,23 +411,23 @@ function TypewriterTerminal() {
         <span>git clone https://github.com/arnab2001/Optischema-Slim.git</span>
       </div>
 
-      <div className={`flex items-center gap-2 transition-opacity duration-300 ${step >= 1 ? 'opacity-100' : 'opacity-0'}`}>
+      <div className={`flex items-center gap-2 transition-opacity duration-300 ${step >= 1 ? 'opacity-100' : 'opacity-0'} `}>
         <span className="text-green-400">➜</span>
         <span>docker compose up -d</span>
       </div>
 
-      <div className={`pt-2 text-gray-500 transition-opacity duration-300 ${step >= 2 ? 'opacity-100' : 'opacity-0'}`}>
+      <div className={`pt-2 text-gray-500 transition-opacity duration-300 ${step >= 2 ? 'opacity-100' : 'opacity-0'} `}>
         [+] Running 3/3<br />
         ✔ Container optischema-db      <span className="text-green-500">Started</span><br />
         ✔ Container optischema-api     <span className="text-green-500">Started</span><br />
       </div>
 
-      <div className={`pt-2 flex items-center gap-2 transition-opacity duration-300 ${step >= 3 ? 'opacity-100' : 'opacity-0'}`}>
+      <div className={`pt-2 flex items-center gap-2 transition-opacity duration-300 ${step >= 3 ? 'opacity-100' : 'opacity-0'} `}>
         <span className="text-blue-400">ℹ</span>
         <span>Detecting Local LLM...</span>
       </div>
 
-      <div className={`text-emerald-400 pt-1 transition-opacity duration-300 ${step >= 4 ? 'opacity-100' : 'opacity-0'}`}>
+      <div className={`text-emerald-400 pt-1 transition-opacity duration-300 ${step >= 4 ? 'opacity-100' : 'opacity-0'} `}>
         ✔ Connected to Ollama (SQLCoder-7B)
         <br />
         <span className="text-white mt-2 block font-bold">Ready! UI running at http://localhost:3000</span>
@@ -413,7 +454,7 @@ function WaitlistSection() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${anonKey}`,
+          'Authorization': `Bearer ${anonKey} `,
           'apikey': anonKey,
         },
         body: JSON.stringify({ email: email.trim() }),
@@ -476,8 +517,8 @@ function WaitlistSection() {
           </div>
 
           {message && (
-            <div className={`mt-4 text-sm font-medium flex items-center justify-center gap-2 animate-fade-in ${status === 'success' ? 'text-green-600' : 'text-red-500'
-              }`}>
+            <div className={`mt-4 text-sm font-medium flex items-center justify-center gap-2 animate-fade -in ${status === 'success' ? 'text-green-600' : 'text-red-500'
+              } `}>
               {status === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
               {message}
             </div>

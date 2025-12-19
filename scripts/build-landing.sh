@@ -63,3 +63,4 @@ echo ""
 echo "3. Your landing page will be available at:"
 echo "   https://arnab2001.github.io/Optischema-Slim/"
 echo ""
+

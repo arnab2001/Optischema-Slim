@@ -153,3 +153,43 @@
   background-size: 200% 200%;
   animation: gradient-xy 3s ease infinite;
 }
+
+@keyframes beam-horizontal {
+  0% {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+
+  50% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+@keyframes beam-vertical {
+  0% {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+
+  50% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+}
+
+.animate-beam-horizontal {
+  animation: beam-horizontal 8s linear infinite;
+}
+
+.animate-beam-vertical {
+  animation: beam-vertical 8s linear infinite;
+}

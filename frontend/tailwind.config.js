@@ -48,6 +48,13 @@ module.exports = {
         sm: 'calc(var(--radius) - 4px)',
       },
     },
+    keyframes: {
+      shimmer: {
+        "100%": {
+          transform: "translateX(100%)",
+        },
+      },
+    },
   },
   plugins: [require('@tailwindcss/typography')],
-} 
+}; 

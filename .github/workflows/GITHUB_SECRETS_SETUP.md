@@ -59,3 +59,4 @@ Once you add the secrets:
 - Verify the keys are correct
 - Check browser console for errors
 - Ensure Supabase Edge Function is deployed
+
