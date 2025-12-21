@@ -107,6 +107,7 @@ export function HealthDoctor() {
     const [result, setResult] = useState<ScanResult | null>(null);
     const [expandedSection, setExpandedSection] = useState<string | null>(null);
     const [showSqlModal, setShowSqlModal] = useState<string | null>(null);
+    const [showMethodology, setShowMethodology] = useState(false);
     const [copied, setCopied] = useState(false);
 
     // History State
@@ -210,6 +211,15 @@ export function HealthDoctor() {
         }
     };
 
+    const generateConfigSql = (setting: string, recommendation: string) => {
+        let value = "/* appropriate_value */";
+        if (setting === "work_mem") value = "'16MB'";
+        else if (setting === "shared_buffers") value = "'1GB'";
+        else if (setting === "autovacuum_vacuum_scale_factor") value = "0.05";
+
+        return `-- Prescription: ${recommendation}\nALTER SYSTEM SET ${setting} = ${value};\nSELECT pg_reload_conf();`;
+    };
+
     const cardClass = `rounded-xl border shadow-sm ${isDark ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200"}`;
 
     return (
@@ -285,30 +295,39 @@ export function HealthDoctor() {
                             {/* Score & AI Triage */}
                             <div className="lg:col-span-4 flex flex-col items-center">
                                 <div className={`w-full p-8 rounded-2xl border ${getHealthBgColor(result.health_score)} transition-colors duration-500 relative overflow-hidden`}>
-                                    <div className="flex flex-col items-center justify-center relative z-10">
+                                    <div className="flex flex-col items-center justify-center relative z-10 w-full">
                                         <HealthScoreGauge score={result.health_score} loading={loading} />
-                                        <div className="mt-6 text-center">
-                                            <span className={`text-xs uppercase tracking-widest font-black ${isDark ? "text-slate-500" : "text-slate-400"}`}>Health Score</span>
+                                        <div className="mt-6 text-center w-full relative">
+                                            <div className="flex items-center justify-center gap-1">
+                                                <span className={`text-xs uppercase tracking-widest font-black ${isDark ? "text-slate-500" : "text-slate-400"}`}>Health Score</span>
+                                                <button
+                                                    onMouseEnter={() => setShowMethodology(true)}
+                                                    onMouseLeave={() => setShowMethodology(false)}
+                                                    className="p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                                                >
+                                                    <Info className="w-3.5 h-3.5 opacity-40 hover:opacity-100 transition-opacity" />
+                                                </button>
+
+                                                {showMethodology && result.score_breakdown && (
+                                                    <div className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-64 p-4 rounded-xl shadow-2xl z-[100] border backdrop-blur-md animate-in fade-in zoom-in-95 duration-200 ${isDark ? "bg-slate-900/95 border-slate-700 text-slate-300" : "bg-white/95 border-slate-200 text-slate-700"
+                                                        }`}>
+                                                        <p className="text-[10px] uppercase font-bold text-center opacity-60 mb-3 border-b border-black/10 dark:border-white/10 pb-2">Score Methodology</p>
+                                                        <ul className="space-y-2">
+                                                            {result.score_breakdown.map((point, idx) => (
+                                                                <li key={idx} className="text-[10px] leading-relaxed flex items-start gap-2">
+                                                                    <div className="mt-1 w-1 h-1 rounded-full bg-red-500 flex-shrink-0" />
+                                                                    <span>{point}</span>
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                )}
+                                            </div>
                                             <p className={`text-sm mt-1 font-medium ${isDark ? "text-slate-300" : "text-slate-600"}`}>
                                                 {result.health_score >= 80 ? "Peak Condition" : result.health_score >= 50 ? "Needs Attention" : "Critical State"}
                                             </p>
                                         </div>
                                     </div>
-
-                                    {/* Score Breakdown Tooltip Trigger */}
-                                    {result.score_breakdown && result.score_breakdown.length > 0 && (
-                                        <div className="mt-6 w-full pt-4 border-t border-dashed border-black/10 dark:border-white/10">
-                                            <p className="text-[10px] uppercase font-bold text-center opacity-60 mb-2">Methodology</p>
-                                            <ul className="space-y-1">
-                                                {result.score_breakdown.map((point, idx) => (
-                                                    <li key={idx} className="text-[10px] opacity-70 flex items-start gap-1">
-                                                        <span className="text-red-500 font-bold">•</span>
-                                                        {point}
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    )}
                                 </div>
                             </div>
 
@@ -363,7 +382,7 @@ export function HealthDoctor() {
                                         <span className={`text-xl font-bold ${result.summary.total_bloated_tables > 0 ? "text-red-500" : isDark ? "text-white" : "text-slate-800"}`}>
                                             {result.summary.total_bloated_tables}
                                         </span>
-                                        <span className="text-xs opacity-50">Alerts</span>
+                                        <span className={`text-xs ${isDark ? "text-slate-400" : "text-slate-400"}`}>Alerts</span>
                                     </div>
                                 </div>
                             </div>
@@ -387,7 +406,7 @@ export function HealthDoctor() {
                                         <span className={`text-xl font-bold ${result.summary.total_unused_indexes > 0 ? "text-yellow-600" : isDark ? "text-white" : "text-slate-800"}`}>
                                             {result.summary.total_unused_indexes}
                                         </span>
-                                        <span className="text-xs opacity-50">Candidates</span>
+                                        <span className={`text-xs ${isDark ? "text-slate-400" : "text-slate-400"}`}>Candidates</span>
                                     </div>
                                 </div>
                             </div>
@@ -411,7 +430,7 @@ export function HealthDoctor() {
                                         <span className={`text-xl font-bold ${result.summary.total_config_issues > 0 ? "text-blue-500" : isDark ? "text-white" : "text-slate-800"}`}>
                                             {result.summary.total_config_issues}
                                         </span>
-                                        <span className="text-xs opacity-50">Notices</span>
+                                        <span className={`text-xs ${isDark ? "text-slate-400" : "text-slate-400"}`}>Notices</span>
                                     </div>
                                 </div>
                             </div>
@@ -431,7 +450,7 @@ export function HealthDoctor() {
                             {expandedSection === "indexes" && "Unused Index Candidates"}
                             {expandedSection === "config" && "Configuration Review"}
                         </h3>
-                        <button onClick={() => setExpandedSection(null)} className="text-xs hover:underline opacity-50">Close</button>
+                        <button onClick={() => setExpandedSection(null)} className={`text-xs hover:underline ${isDark ? "text-slate-500" : "text-slate-400"}`}>Close</button>
                     </div>
                     {/* Content rendering logic remains similar to previous version basically */}
                     <div className="grid grid-cols-1 gap-3 max-h-[500px] overflow-y-auto custom-scrollbar">
@@ -440,11 +459,11 @@ export function HealthDoctor() {
                                 <div className="flex justify-between items-start">
                                     <div>
                                         <p className="font-mono text-sm font-bold text-blue-500">{issue.schema}.{issue.table}</p>
-                                        <p className="text-xs opacity-60 mt-1">Dead Ratio: <span className={issue.dead_ratio > 20 ? "text-red-500 font-bold" : ""}>{issue.dead_ratio}%</span></p>
+                                        <p className={`text-xs mt-1 ${isDark ? "text-slate-400" : "text-slate-500"}`}>Dead Ratio: <span className={issue.dead_ratio > 20 ? "text-red-500 font-bold" : ""}>{issue.dead_ratio}%</span></p>
                                     </div>
                                     <span className={`text-[10px] uppercase font-bold px-2 py-1 rounded ${getSeverityColor(issue.severity)}`}>{issue.severity}</span>
                                 </div>
-                                <div className={`mt-2 p-2 rounded text-xs font-mono opacity-80 ${isDark ? "bg-black/20" : "bg-white border"}`}>
+                                <div className={`mt-2 p-2 rounded text-xs font-mono font-medium ${isDark ? "bg-black/20 text-slate-300" : "bg-white border text-slate-600"}`}>
                                     {issue.recommendation}
                                 </div>
                             </div>
@@ -454,7 +473,7 @@ export function HealthDoctor() {
                                 <div className="flex justify-between items-start">
                                     <div>
                                         <p className="font-mono text-sm font-bold text-yellow-500">{issue.index}</p>
-                                        <p className="text-xs opacity-60 mt-1">Size: {issue.size} • Scans: 0</p>
+                                        <p className={`text-xs mt-1 ${isDark ? "text-slate-400" : "text-slate-500"}`}>Size: {issue.size} • Scans: 0</p>
                                     </div>
                                     <button onClick={() => setShowSqlModal(issue.recommendation)} className="text-xs bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600 transition">Drop</button>
                                 </div>
@@ -462,9 +481,32 @@ export function HealthDoctor() {
                         ))}
                         {expandedSection === "config" && result.config_issues.issues.map((issue, idx) => (
                             <div key={idx} className={`p-4 rounded-lg border ${isDark ? "bg-slate-900/30 border-slate-700" : "bg-slate-50 border-slate-200"}`}>
-                                <p className="font-bold text-sm">{issue.setting}</p>
-                                <p className="text-xs text-red-400 mt-1">{issue.issue}</p>
-                                <p className="text-xs mt-2 opacity-60">Try: {issue.recommendation}</p>
+                                <div className="flex justify-between items-start mb-2">
+                                    <div>
+                                        <p className={`font-bold text-sm ${isDark ? "text-white" : "text-slate-900"}`}>{issue.setting}</p>
+                                        <p className="text-xs text-red-500 mt-0.5">{issue.issue}</p>
+                                    </div>
+                                    <span className={`text-[10px] font-mono ${isDark ? "text-slate-400" : "text-slate-500"}`}>Current: {issue.current_value}</span>
+                                </div>
+                                <div className={`relative group mt-3 p-3 rounded-lg border ${isDark ? "bg-black/40 border-slate-700" : "bg-slate-100 border-slate-200"}`}>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <span className="text-[10px] uppercase font-bold text-blue-500">Fix SQL</span>
+                                        <button
+                                            onClick={() => {
+                                                const sql = generateConfigSql(issue.setting, issue.recommendation);
+                                                navigator.clipboard.writeText(sql);
+                                                toast.success("SQL copied to clipboard");
+                                            }}
+                                            className="p-1.5 rounded-md hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+                                            title="Copy SQL"
+                                        >
+                                            <Clipboard className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
+                                    <pre className="text-[11px] font-mono text-slate-400 overflow-x-auto">
+                                        {generateConfigSql(issue.setting, issue.recommendation)}
+                                    </pre>
+                                </div>
                             </div>
                         ))}
                     </div>

@@ -203,7 +203,7 @@ class MetricService:
                             # Calculate time window
                             time_window = 1.0  # Default to 1 second to avoid division by zero
                             if stats_reset:
-                                time_window = await conn.fetchval("SELECT EXTRACT(EPOCH FROM (now() - $1::timestamp))", stats_reset) or 1.0
+                                time_window = await conn.fetchval("SELECT EXTRACT(EPOCH FROM (now() - $1))", stats_reset) or 1.0
                             else:
                                 time_window = await conn.fetchval("""
                                     SELECT EXTRACT(EPOCH FROM (now() - pg_postmaster_start_time()))
@@ -226,7 +226,7 @@ class MetricService:
                                 if tx_calls and tx_calls["tx_count"] > 0:
                                     if tx_calls["stats_reset"]:
                                         tx_window = await conn.fetchval(
-                                            "SELECT EXTRACT(EPOCH FROM (now() - $1::timestamp))",
+                                            "SELECT EXTRACT(EPOCH FROM (now() - $1))",
                                             tx_calls["stats_reset"]
                                         ) or 1
                                     else:

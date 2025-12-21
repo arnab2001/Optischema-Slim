@@ -231,7 +231,7 @@ class HealthScanService:
             "config_issues": {
                 "checked": True,
                 "issues": config_issues,
-                "total_settings_checked": len(configs)
+                "total_settings_checked": len(vitals.get('config', []))
             },
             "summary": {
                 "total_bloated_tables": len(bloat_issues),
