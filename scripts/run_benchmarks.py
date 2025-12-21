@@ -75,20 +75,20 @@ def ensure_app_connection():
         # Check health
         resp = requests.get(f"{API_BASE_URL}/health", timeout=5)
         if resp.status_code != 200:
-            print(f"❌ Backend is not healthy: {resp.status_code}")
+            print(f"Backend is not healthy: {resp.status_code}")
             return False
             
         # Send connection request
         payload = {"connection_string": conn_string}
         r = requests.post(CONNECT_URL, json=payload, timeout=10)
         if r.status_code == 200:
-            print(f"✅ App connected to sandbox DB.")
+            print(f"App connected to sandbox DB.")
             return True
         else:
-            print(f"❌ Failed to connect app to DB: {r.text}")
+            print(f"Failed to connect app to DB: {r.text}")
             return False
     except Exception as e:
-        print(f"❌ Error connecting to app: {e}")
+        print(f"Error connecting to app: {e}")
         return False
 
 def verify_benchmark_result(scenario_id):
@@ -101,17 +101,17 @@ def verify_benchmark_result(scenario_id):
             if "error" not in data:
                 return data["actual_category"], data["alignment_score"]
             else:
-                print(f"⚠️ Verification data missing in Postgres: {data['error']}")
+                print(f"Verification data missing in Postgres: {data['error']}")
         else:
-            print(f"❌ Verification API failed: {resp.status_code}")
+            print(f"Verification API failed: {resp.status_code}")
         return None, 0.0
     except Exception as e:
-        print(f"❌ Error verifying benchmark result via API: {e}")
+        print(f"Error verifying benchmark result via API: {e}")
         return None, 0.0
 
 def generate_query_load(query, iterations=10):
     """Execute query multiple times via docker exec psql to ensure it shows up in pg_stat_statements."""
-    print(f"🔥 Generating load ({iterations} iterations)...")
+    print(f"Generating load ({iterations} iterations)...")
     import subprocess
     
     # We use docker exec to run psql inside the container
@@ -127,7 +127,7 @@ def generate_query_load(query, iterations=10):
             subprocess.run(psql_cmd, capture_output=True, check=False)
             
     except Exception as e:
-        print(f"⚠️ Load generation failed: {e}")
+        print(f"Load generation failed: {e}")
 
 def run_scenario(scenario):
     print(f"\n[Scenario {scenario['id']}] {scenario['name']}")
@@ -152,7 +152,7 @@ def run_scenario(scenario):
         duration = time.time() - start_time
         
         if response.status_code != 200:
-            print(f"❌ API Error: {response.status_code} - {response.text}")
+            print(f"API Error: {response.status_code} - {response.text}")
             return None, 0.0
         
         result = response.json()
@@ -177,15 +177,15 @@ def run_scenario(scenario):
         
         return result, alignment_score
     except Exception as e:
-        print(f"❌ Request Error: {e}")
+        print(f"Request Error: {e}")
         return None, 0.0
 
 def main():
-    print("🚀 Starting LLM Benchmark Suite...")
+    print("Starting LLM Benchmark Suite...")
     print(f"Logging to: {DB_PATH}")
     
     if not ensure_app_connection():
-        print("❌ Aborting: Could not establish app-to-db connection.")
+        print("Aborting: Could not establish app-to-db connection.")
         sys.exit(1)
         
     passed = 0
@@ -202,10 +202,10 @@ def main():
     print("="*40)
     
     if passed == total:
-        print("\n✨ GOLDEN DATASET SUCCESS - ALL SCENARIOS ALIGNED ✨")
+        print("\nGOLDEN DATASET SUCCESS - ALL SCENARIOS ALIGNED")
         sys.exit(0)
     else:
-        print("\n⚠️ SOME SCENARIOS FAILED ALIGNMENT - CHECK DATABASE FOR CONTEXT ⚠️")
+        print("\nSOME SCENARIOS FAILED ALIGNMENT - CHECK DATABASE FOR CONTEXT")
         sys.exit(1)
 
 if __name__ == "__main__":

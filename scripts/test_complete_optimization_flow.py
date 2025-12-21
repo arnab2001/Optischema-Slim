@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 async def test_complete_optimization_flow():
     """Test the complete optimization flow end-to-end."""
-    print("🚀 Testing Complete OptiSchema Optimization Flow\n")
+    print("Testing Complete OptiSchema Optimization Flow\n")
     
     # Import modules after setting up path
     from analysis.llm import generate_recommendation
@@ -32,10 +32,10 @@ async def test_complete_optimization_flow():
     await start_job_manager()
     apply_manager = get_apply_manager()
     
-    print("✅ Job manager and apply manager initialized\n")
+    print("Job manager and apply manager initialized\n")
     
     # Step 1: Generate AI Recommendation with Executable SQL
-    print("📝 Step 1: Generate AI Recommendation...")
+    print("Step 1: Generate AI Recommendation...")
     
     test_query_data = {
         "query_text": "SELECT * FROM users WHERE email = 'test@example.com'",
@@ -59,25 +59,25 @@ async def test_complete_optimization_flow():
     
     try:
         recommendation = await generate_recommendation(test_query_data)
-        print(f"   📋 Title: {recommendation['title']}")
-        print(f"   🎯 Confidence: {recommendation['confidence']}%")
-        print(f"   📈 Improvement: {recommendation['estimated_improvement']}")
-        print(f"   ⚠️  Risk: {recommendation['risk_level']}")
-        print(f"   🔧 SQL Fix: {recommendation.get('sql_fix', 'None')}")
-        print(f"   ↩️  Rollback: {recommendation.get('rollback_sql', 'None')}")
+        print(f"   Title: {recommendation['title']}")
+        print(f"   Confidence: {recommendation['confidence']}%")
+        print(f"   Improvement: {recommendation['estimated_improvement']}")
+        print(f"   Risk: {recommendation['risk_level']}")
+        print(f"   SQL Fix: {recommendation.get('sql_fix', 'None')}")
+        print(f"   Rollback: {recommendation.get('rollback_sql', 'None')}")
         
         if not recommendation.get('sql_fix'):
-            print("   ❌ No executable SQL generated - stopping test")
+            print("   No executable SQL generated - stopping test")
             return False
             
-        print("   ✅ AI recommendation with executable SQL generated successfully!\n")
+        print("   AI recommendation with executable SQL generated successfully!\n")
         
     except Exception as e:
-        print(f"   ❌ AI recommendation failed: {e}")
+        print(f"   AI recommendation failed: {e}")
         return False
     
     # Step 2: Store recommendation in database
-    print("💾 Step 2: Store Recommendation in Database...")
+    print("Step 2: Store Recommendation in Database...")
     
     try:
         # Create a complete recommendation record
@@ -99,14 +99,14 @@ async def test_complete_optimization_flow():
         }
         
         rec_id = await RecommendationsService.add_recommendation(recommendation_record)
-        print(f"   ✅ Stored recommendation: {rec_id}\n")
+        print(f"   Stored recommendation: {rec_id}\n")
         
     except Exception as e:
-        print(f"   ❌ Failed to store recommendation: {e}")
+        print(f"   Failed to store recommendation: {e}")
         return False
     
     # Step 3: Run Benchmark Test
-    print("⏱️  Step 3: Run Benchmark Test...")
+    print("Step 3: Run Benchmark Test...")
     
     try:
         benchmark_options = {
@@ -119,130 +119,130 @@ async def test_complete_optimization_flow():
         )
         
         if benchmark_result.get('success'):
-            print(f"   📊 Baseline: {benchmark_result['baseline']['total_time']:.2f}ms")
-            print(f"   📊 Optimized: {benchmark_result['optimized']['total_time']:.2f}ms") 
-            print(f"   📈 Improvement: {benchmark_result['improvement']['time_improvement_percent']:.1f}%")
-            print("   ✅ Benchmark completed successfully!\n")
+            print(f"   Baseline: {benchmark_result['baseline']['total_time']:.2f}ms")
+            print(f"   Optimized: {benchmark_result['optimized']['total_time']:.2f}ms") 
+            print(f"   Improvement: {benchmark_result['improvement']['time_improvement_percent']:.1f}%")
+            print("   Benchmark completed successfully!\n")
         else:
-            print(f"   ⚠️  Benchmark warning: {benchmark_result.get('error', 'Unknown issue')}")
-            print("   ⏭️  Continuing with apply test...\n")
+            print(f"   Benchmark warning: {benchmark_result.get('error', 'Unknown issue')}")
+            print("   Continuing with apply test...\n")
             
     except Exception as e:
-        print(f"   ❌ Benchmark failed: {e}")
-        print("   ⏭️  Continuing with apply test...\n")
+        print(f"   Benchmark failed: {e}")
+        print("   Continuing with apply test...\n")
     
     # Step 4: Apply Recommendation
-    print("🔧 Step 4: Apply Recommendation...")
+    print("Step 4: Apply Recommendation...")
     
     try:
         apply_result = await apply_manager.apply_recommendation(rec_id)
         
         if apply_result.get('success'):
-            print(f"   🗂️  Schema: {apply_result['schema_name']}")
-            print(f"   🔧 SQL Executed: {apply_result['sql_executed']}")
-            print(f"   ↩️  Rollback Available: {apply_result['rollback_available']}")
-            print(f"   📅 Applied At: {apply_result['applied_at']}")
-            print("   ✅ Recommendation applied successfully!\n")
+            print(f"   Schema: {apply_result['schema_name']}")
+            print(f"   SQL Executed: {apply_result['sql_executed']}")
+            print(f"   Rollback Available: {apply_result['rollback_available']}")
+            print(f"   Applied At: {apply_result['applied_at']}")
+            print("   Recommendation applied successfully!\n")
         else:
-            print(f"   ❌ Apply failed: {apply_result}")
+            print(f"   Apply failed: {apply_result}")
             return False
             
     except Exception as e:
-        print(f"   ❌ Apply failed: {e}")
+        print(f"   Apply failed: {e}")
         return False
     
     # Step 5: Check Applied Changes
-    print("📋 Step 5: Check Applied Changes...")
+    print("Step 5: Check Applied Changes...")
     
     try:
         applied_changes = await apply_manager.get_applied_changes()
         change_status = await apply_manager.get_change_status(rec_id)
         
-        print(f"   📊 Total Applied Changes: {len(applied_changes)}")
-        print(f"   📋 This Change Status: {change_status['status']}")
-        print(f"   📅 Applied At: {change_status['applied_at']}")
-        print("   ✅ Applied changes verified!\n")
+        print(f"   Total Applied Changes: {len(applied_changes)}")
+        print(f"   This Change Status: {change_status['status']}")
+        print(f"   Applied At: {change_status['applied_at']}")
+        print("   Applied changes verified!\n")
         
     except Exception as e:
-        print(f"   ❌ Failed to check applied changes: {e}")
+        print(f"   Failed to check applied changes: {e}")
         return False
     
     # Step 6: Rollback Recommendation  
-    print("↩️  Step 6: Rollback Recommendation...")
+    print("Step 6: Rollback Recommendation...")
     
     try:
         rollback_result = await apply_manager.rollback_recommendation(rec_id)
         
         if rollback_result.get('success'):
-            print(f"   🔧 SQL Executed: {rollback_result['sql_executed']}")
-            print(f"   📅 Rolled Back At: {rollback_result['rolled_back_at']}")
-            print("   ✅ Recommendation rolled back successfully!\n")
+            print(f"   SQL Executed: {rollback_result['sql_executed']}")
+            print(f"   Rolled Back At: {rollback_result['rolled_back_at']}")
+            print("   Recommendation rolled back successfully!\n")
         else:
-            print(f"   ❌ Rollback failed: {rollback_result}")
+            print(f"   Rollback failed: {rollback_result}")
             return False
             
     except Exception as e:
-        print(f"   ❌ Rollback failed: {e}")
+        print(f"   Rollback failed: {e}")
         return False
     
     # Step 7: Check Audit Trail
-    print("📜 Step 7: Check Audit Trail...")
+    print("Step 7: Check Audit Trail...")
     
     try:
         audit_trail = await apply_manager.get_audit_trail(limit=10)
         
-        print(f"   📊 Total Audit Entries: {len(audit_trail)}")
+        print(f"   Total Audit Entries: {len(audit_trail)}")
         
         # Show recent entries for this recommendation
         rec_entries = [entry for entry in audit_trail if entry['recommendation_id'] == rec_id]
-        print(f"   📋 Entries for this recommendation: {len(rec_entries)}")
+        print(f"   Entries for this recommendation: {len(rec_entries)}")
         
         for entry in rec_entries:
-            print(f"      🔸 {entry['operation_type'].upper()}: {entry['status']} at {entry['created_at']}")
+            print(f"      {entry['operation_type'].upper()}: {entry['status']} at {entry['created_at']}")
             
         if len(rec_entries) >= 2:  # Should have apply + rollback
-            print("   ✅ Audit trail complete!\n")
+            print("   Audit trail complete!\n")
         else:
-            print("   ⚠️  Audit trail incomplete\n")
+            print("   Audit trail incomplete\n")
             
     except Exception as e:
-        print(f"   ❌ Failed to check audit trail: {e}")
+        print(f"   Failed to check audit trail: {e}")
         return False
     
     # Step 8: Final Status Check
-    print("🔍 Step 8: Final Status Check...")
+    print("Step 8: Final Status Check...")
     
     try:
         final_recommendation = await RecommendationsService.get_recommendation(rec_id)
         final_change_status = await apply_manager.get_change_status(rec_id)
         
-        print(f"   📋 Recommendation Status: {final_recommendation.get('status', 'unknown')}")
-        print(f"   📋 Applied: {final_recommendation.get('applied', False)}")
-        print(f"   📋 Change Status: {final_change_status['status']}")
-        print("   ✅ Final status verified!\n")
+        print(f"   Recommendation Status: {final_recommendation.get('status', 'unknown')}")
+        print(f"   Applied: {final_recommendation.get('applied', False)}")
+        print(f"   Change Status: {final_change_status['status']}")
+        print("   Final status verified!\n")
         
     except Exception as e:
-        print(f"   ❌ Failed to check final status: {e}")
+        print(f"   Failed to check final status: {e}")
         return False
     
     # Success!
-    print("🎉 SUCCESS: Complete optimization flow tested successfully!")
-    print("\n📋 Flow Summary:")
-    print("   1. ✅ AI generated executable SQL recommendation")
-    print("   2. ✅ Recommendation stored in database")
-    print("   3. ✅ Benchmark test executed (with safety measures)")
-    print("   4. ✅ Recommendation applied to sandbox database")
-    print("   5. ✅ Applied changes tracked and verified")
-    print("   6. ✅ Recommendation rolled back successfully")
-    print("   7. ✅ Complete audit trail maintained")
-    print("   8. ✅ Final status consistent across systems")
+    print("SUCCESS: Complete optimization flow tested successfully!")
+    print("\nFlow Summary:")
+    print("   1. AI generated executable SQL recommendation")
+    print("   2. Recommendation stored in database")
+    print("   3. Benchmark test executed (with safety measures)")
+    print("   4. Recommendation applied to sandbox database")
+    print("   5. Applied changes tracked and verified")
+    print("   6. Recommendation rolled back successfully")
+    print("   7. Complete audit trail maintained")
+    print("   8. Final status consistent across systems")
     
-    print("\n🛡️  Safety Features Verified:")
-    print("   ✅ Only CREATE INDEX CONCURRENTLY allowed")
-    print("   ✅ All operations in isolated sandbox")
-    print("   ✅ Immutable audit logging")
-    print("   ✅ Automatic rollback SQL generation")
-    print("   ✅ Schema-based isolation")
+    print("\nSafety Features Verified:")
+    print("   Only CREATE INDEX CONCURRENTLY allowed")
+    print("   All operations in isolated sandbox")
+    print("   Immutable audit logging")
+    print("   Automatic rollback SQL generation")
+    print("   Schema-based isolation")
     
     return True
 
@@ -253,8 +253,8 @@ if __name__ == "__main__":
     success = asyncio.run(test_complete_optimization_flow())
     
     if success:
-        print("\n🚀 ALL TESTS PASSED! OptiSchema optimization flow is ready for production!")
+        print("\nALL TESTS PASSED! OptiSchema optimization flow is ready for production!")
         sys.exit(0)
     else:
-        print("\n❌ TESTS FAILED! Please check the errors above.")
+        print("\nTESTS FAILED! Please check the errors above.")
         sys.exit(1) 

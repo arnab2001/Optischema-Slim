@@ -345,7 +345,7 @@ async def seed_activity(conn, count=100000):
 
 async def create_bottlenecks(conn):
     """Intentionally create performance issues."""
-    logger.info("⚡ Creating intentional performance bottlenecks...")
+    logger.info("Creating intentional performance bottlenecks...")
 
     # 1. TABLE BLOAT
     # Insert many rows then delete most of them in user_activity
@@ -399,12 +399,12 @@ async def create_bottlenecks(conn):
             logger.warning(f"Query failed as expected or due to error: {e}")
 
 async def main():
-    logger.info("🚀 Starting COMPLEX Demo Data Seeding...")
+    logger.info("Starting COMPLEX Demo Data Seeding...")
     
     try:
         db_url = get_database_url()
         conn = await asyncpg.connect(db_url)
-        logger.info("✅ Connected to database")
+        logger.info("Connected to database")
         
         await setup_schema(conn)
         
@@ -422,7 +422,7 @@ async def main():
         # Analyze to update stats but NOT vacuum (to keep bloat)
         await conn.execute("ANALYZE;")
         
-        logger.info("✅ Complex demo data seeding completed successfully!")
+        logger.info("Complex demo data seeding completed successfully!")
         
         # Summary
         summary = await conn.fetchrow("""
@@ -432,10 +432,10 @@ async def main():
                 (SELECT count(*) FROM demo_orders) as orders,
                 (SELECT count(*) FROM demo_user_activity) as activities
         """)
-        logger.info(f"📊 Summary: {summary['users']} users, {summary['products']} products, {summary['orders']} orders, {summary['activities']} activities")
+        logger.info(f"Summary: {summary['users']} users, {summary['products']} products, {summary['orders']} orders, {summary['activities']} activities")
 
     except Exception as e:
-        logger.error(f"❌ Seeding failed: {e}")
+        logger.error(f"Seeding failed: {e}")
         sys.exit(1)
     finally:
         if 'conn' in locals():

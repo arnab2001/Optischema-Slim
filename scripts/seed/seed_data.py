@@ -283,18 +283,18 @@ async def create_performance_bottlenecks(conn):
 
 async def main():
     """Main seeding function."""
-    print("🚀 Starting OptiSchema Demo Data Seeding...")
+    print("Starting OptiSchema Demo Data Seeding...")
     
     try:
         # Connect to database
         database_url = get_database_url()
         conn = await asyncpg.connect(database_url)
         
-        print("✅ Connected to database")
+        print("Connected to database")
         
         # Create schema
         await create_demo_schema(conn)
-        print("✅ Created demo schema")
+        print("Created demo schema")
         
         # Seed data
         await seed_users(conn, 1000)
@@ -305,19 +305,19 @@ async def main():
         # Create performance bottlenecks
         await create_performance_bottlenecks(conn)
         
-        print("✅ Demo data seeding completed!")
-        print("\n📊 Demo Data Summary:")
+        print("Demo data seeding completed!")
+        print("\nDemo Data Summary:")
         print("- 1,000 users")
         print("- 500 products")
         print("- 5,000 orders")
         print("- 50,000 log entries")
         print("- Performance bottlenecks created for demo")
         
-        print("\n🎯 Your OptiSchema dashboard should now show meaningful data!")
+        print("\nYour OptiSchema dashboard should now show meaningful data!")
         print("Visit: http://localhost:3000/dashboard")
         
     except Exception as e:
-        print(f"❌ Error seeding data: {e}")
+        print(f"Error seeding data: {e}")
         sys.exit(1)
     finally:
         if 'conn' in locals():

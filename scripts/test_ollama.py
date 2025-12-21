@@ -26,10 +26,10 @@ async def test_ollama():
     try:
         print("\nSending test prompt: 'Hello, are you working?'")
         response = await provider.generate("Hello, are you working?", max_tokens=50)
-        print(f"\n✅ Success! Response:\n{response}")
+        print(f"\nSuccess! Response:\n{response}")
         return True
     except Exception as e:
-        print(f"\n❌ Failed: {e}")
+        print(f"\nFailed: {e}")
         print("\nTroubleshooting:")
         print("1. Is Ollama running? (Run 'ollama serve')")
         print(f"2. Is the model '{settings.ollama_model}' pulled? (Run 'ollama pull {settings.ollama_model}')")

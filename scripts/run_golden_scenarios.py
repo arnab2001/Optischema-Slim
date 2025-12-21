@@ -38,14 +38,14 @@ def ensure_connection():
             try:
                 r = requests.post(url, json=payload, timeout=10)
                 if r.status_code == 200:
-                    print(f"✅ Connected via {url}")
+                    print(f"Connected via {url}")
                     return True
             except:
                 continue
-        print("❌ Could not connect to database via API")
+        print("Could not connect to database via API")
         return False
     except Exception as e:
-        print(f"❌ Connection error: {e}")
+        print(f"Connection error: {e}")
         return False
 
 SCENARIOS = [
@@ -90,12 +90,12 @@ def run_analysis(scenario):
     try:
         response = requests.post(API_URL, json={"query": scenario["query"]}, timeout=60)
         if response.status_code != 200:
-            print(f"❌ API Error: {response.status_code} - {response.text}")
+            print(f"API Error: {response.status_code} - {response.text}")
             return None
         
         return response.json()
     except Exception as e:
-        print(f"❌ Request Error: {e}")
+        print(f"Request Error: {e}")
         return None
 
 def verify_result(scenario, result):
@@ -114,36 +114,36 @@ def verify_result(scenario, result):
     if actual_category != scenario["expected_category"]:
         # Special case for Category D where model might skip REWRITE and suggest INDEX if it hallucinations
         # But per requirements, it must be REWRITE.
-        print(f"❌ Failed: Expected category {scenario['expected_category']}, got {actual_category}")
+        print(f"Failed: Expected category {scenario['expected_category']}, got {actual_category}")
         return False
     
     # 2. Check Fail conditions
     for fail_keyword in scenario["fail_if"]:
         if fail_keyword.upper() == actual_category:
-             print(f"❌ Failed: Categorized as {fail_keyword} which is blocked for this scenario.")
+             print(f"Failed: Categorized as {fail_keyword} which is blocked for this scenario.")
              return False
         if fail_keyword.lower() in sql.lower():
-             print(f"❌ Failed: Suggestion contains '{fail_keyword}' which is blocked for this scenario.")
+             print(f"Failed: Suggestion contains '{fail_keyword}' which is blocked for this scenario.")
              return False
 
     # 3. Scenario specific checks
     if scenario["id"] == "C":
         if "tiny" not in reasoning and "small" not in reasoning and "15" not in reasoning:
-             print("⚠️ Warning: Reasoning didn't mention table size explicitly, but category matches.")
+             print("Warning: Reasoning didn't mention table size explicitly, but category matches.")
     
     if scenario["id"] == "D":
         if ">=" not in sql or "2023" not in sql:
-             print("❌ Failed: Rewrite suggestion doesn't look like a range query rewrite.")
+             print("Failed: Rewrite suggestion doesn't look like a range query rewrite.")
              return False
 
-    print("✅ Passed!")
+    print("Passed!")
     return True
 
 def main():
-    print("🚀 Starting Golden Dataset Evaluation...")
+    print("Starting Golden Dataset Evaluation...")
     
     if not ensure_connection():
-        print("❌ Aborting due to connection failure.")
+        print("Aborting due to connection failure.")
         sys.exit(1)
         
     passed = 0
@@ -158,10 +158,10 @@ def main():
     print(f"\nSummary: {passed}/{total} scenarios passed.")
     
     if passed == total:
-        print("\n✨ GOLDEN DATASET SUCCESS ✨")
+        print("\nGOLDEN DATASET SUCCESS")
         sys.exit(0)
     else:
-        print("\n❌ SOME SCENARIOS FAILED ❌")
+        print("\nSOME SCENARIOS FAILED")
         sys.exit(1)
 
 if __name__ == "__main__":

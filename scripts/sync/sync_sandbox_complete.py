@@ -50,7 +50,7 @@ async def get_table_structure(conn, schema, table):
             'primary_key': [c['column_name'] for c in pk]
         }
     except Exception as e:
-        print(f"⚠️  Error getting structure for {schema}.{table}: {e}")
+        print(f"Error getting structure for {schema}.{table}: {e}")
         return None
 
 async def create_table_in_sandbox(sandbox_conn, schema, table, structure):
@@ -77,11 +77,11 @@ async def create_table_in_sandbox(sandbox_conn, schema, table, structure):
         create_sql = f'CREATE TABLE IF NOT EXISTS "{schema}"."{table}" (\n  ' + ',\n  '.join(columns) + '\n)'
         
         await sandbox_conn.execute(create_sql)
-        print(f"✅ Created table: {schema}.{table}")
+        print(f"Created table: {schema}.{table}")
         return True
         
     except Exception as e:
-        print(f"❌ Error creating table {schema}.{table}: {e}")
+        print(f"Error creating table {schema}.{table}: {e}")
         return False
 
 async def copy_sample_data(rds_conn, sandbox_conn, schema, table, limit=100):
@@ -114,24 +114,24 @@ async def copy_sample_data(rds_conn, sandbox_conn, schema, table, limit=100):
         if values:
             insert_sql = f'INSERT INTO "{schema}"."{table}" ({col_names}) VALUES {", ".join(values)}'
             await sandbox_conn.execute(insert_sql)
-            print(f"📊 Copied {len(data)} rows to {schema}.{table}")
+            print(f"Copied {len(data)} rows to {schema}.{table}")
             return len(data)
         
     except Exception as e:
-        print(f"⚠️  Error copying data for {schema}.{table}: {e}")
+        print(f"Error copying data for {schema}.{table}: {e}")
         return 0
 
 async def main():
-    print("🔄 Complete sync of RDS database to sandbox...")
+    print("Complete sync of RDS database to sandbox...")
     
     # Validate required environment variables
     if not RDS_PASSWORD:
-        print("❌ Error: RDS_PASSWORD environment variable is required")
+        print("Error: RDS_PASSWORD environment variable is required")
         print("Please set RDS_PASSWORD and other RDS connection variables")
         sys.exit(1)
     
     # Connect to RDS
-    print("📤 Connecting to RDS database...")
+    print("Connecting to RDS database...")
     try:
         rds_conn = await asyncpg.connect(
             host=RDS_HOST,
@@ -142,7 +142,7 @@ async def main():
             ssl='require'
         )
     except Exception as e:
-        print(f"❌ Failed to connect to RDS: {e}")
+        print(f"Failed to connect to RDS: {e}")
         print("Please check your RDS connection environment variables:")
         print(f"  RDS_HOST={RDS_HOST}")
         print(f"  RDS_PORT={RDS_PORT}")
@@ -151,7 +151,7 @@ async def main():
         sys.exit(1)
     
     # Connect to sandbox
-    print("📦 Connecting to sandbox...")
+    print("Connecting to sandbox...")
     sandbox_conn = await asyncpg.connect(
         host=SANDBOX_HOST,
         port=SANDBOX_PORT,
@@ -170,12 +170,12 @@ async def main():
             ORDER BY schemaname, tablename
         """)
         
-        print(f"📊 Found {len(tables)} tables to sync")
+        print(f"Found {len(tables)} tables to sync")
         
         total_rows = 0
         for table in tables:
             schema, table_name = table['schemaname'], table['tablename']
-            print(f"\n🔄 Processing {schema}.{table_name}...")
+            print(f"\nProcessing {schema}.{table_name}...")
             
             # Get table structure
             structure = await get_table_structure(rds_conn, schema, table_name)
@@ -186,13 +186,13 @@ async def main():
                 rows_copied = await copy_sample_data(rds_conn, sandbox_conn, schema, table_name, 50)
                 total_rows += rows_copied
         
-        print(f"\n✅ Sync completed!")
-        print(f"📊 Total rows copied: {total_rows}")
-        print(f"🔗 Sandbox: postgresql://{SANDBOX_USER}:***@{SANDBOX_HOST}:{SANDBOX_PORT}/{SANDBOX_DB}")
-        print(f"📊 RDS: postgresql://{RDS_USER}:***@{RDS_HOST}:{RDS_PORT}/{RDS_DB}")
+        print(f"\nSync completed!")
+        print(f"Total rows copied: {total_rows}")
+        print(f"Sandbox: postgresql://{SANDBOX_USER}:***@{SANDBOX_HOST}:{SANDBOX_PORT}/{SANDBOX_DB}")
+        print(f"RDS: postgresql://{RDS_USER}:***@{RDS_HOST}:{RDS_PORT}/{RDS_DB}")
         
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"Error: {e}")
         sys.exit(1)
     finally:
         await rds_conn.close()

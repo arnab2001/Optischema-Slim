@@ -32,26 +32,26 @@ start_time = time.time()
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     # Startup
-    logger.info("🚀 Starting OptiSchema backend...")
+    logger.info("Starting OptiSchema backend...")
     
     # Initialize SQLite database
     await init_db()
     
     # Target database connection will be established when user provides credentials
-    logger.info("✅ Target database connection will be established when user provides credentials")
+    logger.info("Target database connection will be established when user provides credentials")
     
-    logger.info("✅ OptiSchema backend started successfully")
+    logger.info("OptiSchema backend started successfully")
     
     yield
     
     # Shutdown
-    logger.info("🛑 Shutting down OptiSchema backend...")
+    logger.info("Shutting down OptiSchema backend...")
     
     # Close target database connection pool
     await connection_manager.disconnect()
-    logger.info("✅ Target database connection pool closed")
+    logger.info("Target database connection pool closed")
     
-    logger.info("✅ OptiSchema backend shutdown complete")
+    logger.info("OptiSchema backend shutdown complete")
 
 
 # Create FastAPI application
