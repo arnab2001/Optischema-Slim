@@ -9,7 +9,8 @@ from typing import Dict, Any, Optional
 from config import settings
 from analysis.core import fingerprint_query
 from tenant_cache import make_cache_key, get_cache, set_cache
-from analysis.providers import LLMFactory
+from llm.factory import LLMFactory
+from llm.base import LLMProvider
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +89,7 @@ Query Data:
 async def call_llm_api(prompt: str, max_tokens: int = 512) -> str:
     """Call the active LLM provider."""
     try:
-        provider = LLMFactory.get_provider()
+        provider = await LLMFactory.get_provider_async()
         return await provider.generate(prompt, max_tokens)
     except Exception as e:
         logger.error(f"LLM generation failed: {e}")
@@ -113,7 +114,10 @@ async def explain_plan(plan_json: Dict[str, Any], query_text: Optional[str] = No
         explanation = await call_llm_api(prompt, max_tokens=512)
         if cache_key:
             set_cache(cache_key, explanation)
-        logger.info(f"Plan explanation generated using {settings.llm_provider}.")
+        
+        # Get provider name for logging
+        provider = await LLMFactory.get_provider_async()
+        logger.info(f"Plan explanation generated using {provider.name}.")
         return explanation
     except Exception as e:
         logger.error(f"Plan explanation failed: {e}")
@@ -134,7 +138,8 @@ async def rewrite_query(sql: str) -> str:
     try:
         optimized_sql = await call_llm_api(prompt, max_tokens=256)
         set_cache(cache_key, optimized_sql)
-        logger.info(f"Query rewrite generated using {settings.llm_provider}.")
+        provider = await LLMFactory.get_provider_async()
+        logger.info(f"Query rewrite generated using {provider.name}.")
         return optimized_sql
     except Exception as e:
         logger.error(f"Query rewrite failed: {e}")
@@ -249,7 +254,8 @@ async def generate_recommendation(query_data: Dict[str, Any]) -> Dict[str, Any]:
             }
         
         set_cache(cache_key, json.dumps(result))
-        logger.info(f"Recommendation generated using {settings.llm_provider}.")
+        provider = await LLMFactory.get_provider_async()
+        logger.info(f"Recommendation generated using {provider.name}.")
         return result
     except Exception as e:
         logger.error(f"Recommendation generation failed: {e}")

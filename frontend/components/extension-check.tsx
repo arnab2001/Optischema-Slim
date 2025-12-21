@@ -13,9 +13,20 @@ interface ExtensionStatus {
     hypopg: boolean;
 }
 
+interface ExtensionDetail {
+    name: string;
+    available: boolean;
+    enabled: boolean;
+    preloaded?: boolean;
+    requires_preload?: boolean;
+    preload_missing?: boolean;
+    remediation?: string | null;
+}
+
 export function ExtensionCheck({ onComplete, onBack }: ExtensionCheckProps) {
     const [checking, setChecking] = useState(true);
     const [status, setStatus] = useState<ExtensionStatus>({ pgstat: false, hypopg: false });
+    const [extensions, setExtensions] = useState<ExtensionDetail[]>([]);
     const [enabling, setEnabling] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
@@ -24,17 +35,18 @@ export function ExtensionCheck({ onComplete, onBack }: ExtensionCheckProps) {
     const checkExtensions = async () => {
         setChecking(true);
         try {
-            const [pgstatRes, hypopgRes] = await Promise.all([
-                fetch(`${apiUrl}/api/connection/extension/check`),
-                fetch(`${apiUrl}/api/connection/extension/hypopg/check`)
-            ]);
+            const res = await fetch(`${apiUrl}/api/connection/extension/status`);
+            const data = await res.json();
+            const extList = (data.extensions || []) as ExtensionDetail[];
 
-            const pgstatData = await pgstatRes.json();
-            const hypopgData = await hypopgRes.json();
+            setExtensions(extList);
+
+            const pgstat = extList.find((e: ExtensionDetail) => e.name === "pg_stat_statements")?.enabled || false;
+            const hypopg = extList.find((e: ExtensionDetail) => e.name === "hypopg")?.enabled || false;
 
             setStatus({
-                pgstat: pgstatData.enabled || false,
-                hypopg: hypopgData.enabled || false
+                pgstat,
+                hypopg
             });
         } catch (e: any) {
             console.error("Failed to check extensions:", e);
@@ -49,18 +61,16 @@ export function ExtensionCheck({ onComplete, onBack }: ExtensionCheckProps) {
     }, []);
 
     const handleEnable = async (ext: "pgstat" | "hypopg") => {
+        const extName = ext === "pgstat" ? "pg_stat_statements" : "hypopg";
         setEnabling(ext);
         setError(null);
         try {
-            const endpoint = ext === "pgstat"
-                ? `${apiUrl}/api/connection/extension/enable`
-                : `${apiUrl}/api/connection/extension/hypopg/enable`;
-
+            const endpoint = `${apiUrl}/api/connection/extension/enable/${extName}`;
             const res = await fetch(endpoint, { method: "POST" });
             const data = await res.json();
 
             if (!res.ok) {
-                throw new Error(data.detail || `Failed to enable ${ext}`);
+                throw new Error(data.detail || `Failed to enable ${extName}`);
             }
 
             setStatus(prev => ({ ...prev, [ext]: true }));
@@ -130,23 +140,31 @@ export function ExtensionCheck({ onComplete, onBack }: ExtensionCheckProps) {
             </div>
 
             {/* Extension Status Cards */}
-            <div className="space-y-3 mb-6">
+            <div className="space-y-4 mb-6">
                 {/* pg_stat_statements */}
                 <div className={`p-4 rounded-lg border ${status.pgstat ? 'bg-green-50 border-green-200' : 'bg-slate-50 border-slate-200'}`}>
-                    <div className="flex items-center justify-between">
-                        <div>
+                    <div className="flex items-start justify-between">
+                        <div className="flex-1">
                             <p className={`font-medium ${status.pgstat ? 'text-green-800' : 'text-slate-800'}`}>
                                 pg_stat_statements
                             </p>
-                            <p className="text-xs text-slate-500">Query performance tracking</p>
+                            <p className="text-xs text-slate-500 mb-2">Query performance tracking</p>
+
+                            {/* Show remediation if available */}
+                            {extensions.find(e => e.name === "pg_stat_statements")?.remediation && !status.pgstat && (
+                                <div className="mt-2 text-xs p-2 bg-yellow-50 text-yellow-700 rounded border border-yellow-100">
+                                    <p className="font-semibold">Action Required:</p>
+                                    {extensions.find(e => e.name === "pg_stat_statements")?.remediation}
+                                </div>
+                            )}
                         </div>
                         {status.pgstat ? (
-                            <CheckCircle2 className="w-5 h-5 text-green-600" />
+                            <CheckCircle2 className="w-5 h-5 text-green-600 mt-1" />
                         ) : (
                             <button
                                 onClick={() => handleEnable("pgstat")}
-                                disabled={enabling === "pgstat"}
-                                className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
+                                disabled={enabling === "pgstat" || !!extensions.find(e => e.name === "pg_stat_statements")?.preload_missing}
+                                className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 mt-1"
                             >
                                 {enabling === "pgstat" ? <Loader2 className="w-4 h-4 animate-spin" /> : "Enable"}
                             </button>
@@ -156,20 +174,28 @@ export function ExtensionCheck({ onComplete, onBack }: ExtensionCheckProps) {
 
                 {/* HypoPG */}
                 <div className={`p-4 rounded-lg border ${status.hypopg ? 'bg-green-50 border-green-200' : 'bg-slate-50 border-slate-200'}`}>
-                    <div className="flex items-center justify-between">
-                        <div>
+                    <div className="flex items-start justify-between">
+                        <div className="flex-1">
                             <p className={`font-medium ${status.hypopg ? 'text-green-800' : 'text-slate-800'}`}>
                                 HypoPG
                             </p>
                             <p className="text-xs text-slate-500">Index impact simulation</p>
+
+                            {/* Show remediation if available */}
+                            {extensions.find(e => e.name === "hypopg")?.remediation && !status.hypopg && (
+                                <div className="mt-2 text-xs p-2 bg-yellow-50 text-yellow-700 rounded border border-yellow-100">
+                                    <p className="font-semibold">Action Required:</p>
+                                    {extensions.find(e => e.name === "hypopg")?.remediation}
+                                </div>
+                            )}
                         </div>
                         {status.hypopg ? (
-                            <CheckCircle2 className="w-5 h-5 text-green-600" />
+                            <CheckCircle2 className="w-5 h-5 text-green-600 mt-1" />
                         ) : (
                             <button
                                 onClick={() => handleEnable("hypopg")}
                                 disabled={enabling === "hypopg"}
-                                className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
+                                className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 mt-1"
                             >
                                 {enabling === "hypopg" ? <Loader2 className="w-4 h-4 animate-spin" /> : "Enable"}
                             </button>

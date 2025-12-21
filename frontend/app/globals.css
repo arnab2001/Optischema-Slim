@@ -74,9 +74,10 @@
 @tailwind utilities;
 
 @layer utilities {
-  .animate-shimmer {
-    animation: shimmer 2s infinite;
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
   }
+
 
   .animate-text-shimmer {
     animation: text-shimmer 3s linear infinite;

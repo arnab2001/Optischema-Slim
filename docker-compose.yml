@@ -2,8 +2,8 @@ services:
   # FastAPI Backend
   optischema-api:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: docker/backend.Dockerfile
     container_name: optischema-api
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -39,8 +39,8 @@ services:
   # Next.js Frontend
   optischema-ui:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: docker/frontend.Dockerfile
     container_name: optischema-ui
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8080

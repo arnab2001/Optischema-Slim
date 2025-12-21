@@ -66,10 +66,14 @@ class AnalysisOrchestrator:
             }
         
         # 1. GATHER CONTEXT
-        # Extract table names using sqlglot
+        # Extract table names using sqlglot (preserving schema qualification)
         try:
             parsed = sqlglot.parse_one(query)
-            tables = [t.name for t in parsed.find_all(sqlglot.exp.Table)]
+            tables = []
+            for t in parsed.find_all(sqlglot.exp.Table):
+                # Use sql() to get qualified name, remove quotes if any
+                qualified_name = t.sql().replace('"', '')
+                tables.append(qualified_name)
         except Exception as e:
             logger.warning(f"Failed to parse query tables: {e}")
             tables = []
@@ -83,7 +87,7 @@ class AnalysisOrchestrator:
             return {"error": "No database connection"}
         
         # Try parameter substitutions to get a valid plan
-        candidates = self._prepare_query_candidates(query)
+        candidates = simulation_service.prepare_query_candidates(query)
         current_plan = None
         current_cost = 0.0
         last_error = None
@@ -126,9 +130,14 @@ class AnalysisOrchestrator:
         result = {
             "original_query": query,
             "original_cost": current_cost,
+            "original_plan": current_plan,
             "suggestion": suggestion,
             "analysis_type": category
         }
+        
+        # Preserve benchmark metadata if present
+        if "_benchmark_metadata" in suggestion:
+            result["_benchmark_metadata"] = suggestion["_benchmark_metadata"]
 
         # 3. ROUTE BASED ON CATEGORY
         if category == "INDEX" and suggested_sql:
@@ -155,37 +164,6 @@ class AnalysisOrchestrator:
             
         return result
 
-    def _prepare_query_candidates(self, query: str) -> List[str]:
-        """
-        Generate candidate queries with smart parameter substitutions.
-        LIMIT/OFFSET parameters get integer 10, other parameters try different types.
-        """
-        import re
-        
-        def smart_replace(q: str, value_for_where: str) -> str:
-            """Replace LIMIT/OFFSET params with 10, other params with given value."""
-            # First, handle LIMIT $N and OFFSET $N specially (need integers)
-            result = re.sub(r'(LIMIT\s+)\$\d+', r'\g<1>10', q, flags=re.IGNORECASE)
-            result = re.sub(r'(OFFSET\s+)\$\d+', r'\g<1>0', result, flags=re.IGNORECASE)
-            # Replace remaining $N with the specified value
-            result = re.sub(r'\$\d+', value_for_where, result)
-            return result
-        
-        candidates = []
-        
-        # Candidate 1: UUID for WHERE clauses (common for user lookups)
-        candidates.append(smart_replace(query, "'00000000-0000-0000-0000-000000000000'::uuid"))
-        
-        # Candidate 2: Integer for WHERE clauses
-        candidates.append(smart_replace(query, "1"))
-        
-        # Candidate 3: String for WHERE clauses
-        candidates.append(smart_replace(query, "'dummy'"))
-        
-        # Candidate 4: NULL fallback
-        candidates.append(smart_replace(query, "NULL"))
-        
-        return candidates
 
 analysis_orchestrator = AnalysisOrchestrator()
 

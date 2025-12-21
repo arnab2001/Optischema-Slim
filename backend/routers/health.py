@@ -1,57 +1,33 @@
-"""
-Health Router for OptiSchema Slim.
-Handles database health scan endpoints.
-"""
-
 from fastapi import APIRouter, HTTPException
-from typing import Dict, Any
-import json
-
 from services.health_scan_service import health_scan_service
-from storage import get_setting, set_setting
-from models import HealthScanResult
+from storage import get_latest_health_result
+from typing import Dict, Any
 
 router = APIRouter(
     prefix="/api/health",
     tags=["health"]
 )
 
+from pydantic import BaseModel
 
-@router.post("/scan", response_model=HealthScanResult)
-async def trigger_health_scan() -> Dict[str, Any]:
-    """
-    Trigger a comprehensive database health scan.
-    Returns scan results with bloat, index, and configuration checks.
-    """
-    try:
-        result = await health_scan_service.perform_scan()
-        
-        # Store scan result in storage for later retrieval
-        await set_setting('last_health_scan', json.dumps(result))
-        await set_setting('last_health_scan_timestamp', result.get('scan_timestamp', ''))
-        
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Health scan failed: {str(e)}")
+class ScanRequest(BaseModel):
+    limit: int = 50
 
+@router.post("/scan")
+async def run_health_check(request: ScanRequest = ScanRequest()):
+    return await health_scan_service.run_scan(limit=request.limit)
+    if "error" in report:
+        raise HTTPException(status_code=500, detail=report["error"])
+    return report
 
-@router.get("/latest", response_model=HealthScanResult)
-async def get_latest_scan() -> Dict[str, Any]:
-    """
-    Get the most recent health scan results.
-    """
-    try:
-        scan_data = await get_setting('last_health_scan')
-        if not scan_data:
-            raise HTTPException(status_code=404, detail="No health scan results found. Run /api/health/scan first.")
-        
-        return json.loads(scan_data)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve scan results: {str(e)}")
+@router.get("/latest")
+async def get_latest_report():
+    report = await get_latest_health_result()
+    if not report:
+        raise HTTPException(status_code=404, detail="No health scan results found")
+    return report
 
-
-
-
-
+@router.get("/history")
+async def get_history_reports(limit: int = 10):
+    from storage import get_health_history
+    return await get_health_history(limit)

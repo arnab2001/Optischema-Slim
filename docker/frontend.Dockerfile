@@ -7,13 +7,13 @@ RUN apk add --no-cache python3 make g++
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+COPY frontend/package*.json ./
 
 # Install dependencies
 RUN npm install
 
 # Copy application code
-COPY . .
+COPY frontend/ .
 
 # Expose port
 EXPOSE 3000

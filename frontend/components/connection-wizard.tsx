@@ -31,7 +31,7 @@ export function ConnectionWizard({ onConnect }: ConnectionWizardProps) {
 
   // Auto-detect RDS and enable SSL
   const isRdsHost = host.trim().includes(".rds.amazonaws.com") || host.trim().includes(".rds.amazonaws.com.cn");
-  
+
   // Auto-enable SSL for RDS hosts
   useEffect(() => {
     if (isRdsHost) {
@@ -78,21 +78,21 @@ export function ConnectionWizard({ onConnect }: ConnectionWizardProps) {
 
       // Build base connection string
       finalConnectionString = `postgresql://${encodedUser}:${encodedPass}@${cleanHost}:${cleanPort}/${encodedDb}`;
-      
+
       // Add SSL mode if enabled or if RDS host (RDS requires SSL)
       const needsSsl = ssl || isRdsHost;
       if (needsSsl) {
         const separator = finalConnectionString.includes("?") ? "&" : "?";
         finalConnectionString += `${separator}sslmode=require`;
       }
-      
+
       // Log the constructed string for debugging (without password)
       console.log("Constructed connection string:", finalConnectionString.replace(/:[^:]*@/, ":****@"));
     } else {
       // Normalize user-provided connection string
       finalConnectionString = normalizeConnectionString(finalConnectionString);
     }
-    
+
     // Ensure scheme is present for both modes
     finalConnectionString = normalizeConnectionString(finalConnectionString);
 
@@ -111,8 +111,8 @@ export function ConnectionWizard({ onConnect }: ConnectionWizardProps) {
           // Handle different error response formats
           errorMessage = data.detail || data.message || data.error || errorMessage;
           // If detail is an object (structured error), extract the message
-          if (typeof errorMessage === "object" && errorMessage.message) {
-            errorMessage = errorMessage.message;
+          if (typeof errorMessage === "object" && errorMessage !== null) {
+            errorMessage = (errorMessage as any).message || JSON.stringify(errorMessage);
           }
         } catch (e) {
           // If JSON parsing fails, use status text
@@ -126,7 +126,7 @@ export function ConnectionWizard({ onConnect }: ConnectionWizardProps) {
       setConnected(true);
       setConnectionString(finalConnectionString);
       setConnectionStatus("connected");
-      
+
       // Save connection if checkbox is checked and name is provided
       if (saveConnection && connectionName.trim()) {
         try {
@@ -137,7 +137,7 @@ export function ConnectionWizard({ onConnect }: ConnectionWizardProps) {
           let saveUser = user;
           let savePass = password;
           let saveSsl = ssl || isRdsHost;
-          
+
           // If using connection string mode, parse it
           if (mode === "string" && finalConnectionString) {
             try {
@@ -153,7 +153,7 @@ export function ConnectionWizard({ onConnect }: ConnectionWizardProps) {
               console.warn('Could not parse connection string for saving:', e);
             }
           }
-          
+
           const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
           const saveRes = await fetch(`${apiUrl}/api/connection/save`, {
             method: "POST",
@@ -168,7 +168,7 @@ export function ConnectionWizard({ onConnect }: ConnectionWizardProps) {
               ssl: saveSsl
             }),
           });
-          
+
           if (saveRes.ok) {
             setSaveSuccess(true);
             console.log(`Connection "${connectionName}" saved successfully`);
@@ -179,7 +179,7 @@ export function ConnectionWizard({ onConnect }: ConnectionWizardProps) {
             if (typeof errorMsg === 'object' && errorMsg.message) {
               errorMsg = errorMsg.message;
             }
-            
+
             // Show warning for duplicate connections
             if (errorMsg.includes('already exists')) {
               setSaveWarning(errorMsg);
@@ -190,7 +190,7 @@ export function ConnectionWizard({ onConnect }: ConnectionWizardProps) {
           console.warn('Error saving connection:', saveErr);
         }
       }
-      
+
       onConnect();
     } catch (err: any) {
       console.error(err);
@@ -307,12 +307,12 @@ export function ConnectionWizard({ onConnect }: ConnectionWizardProps) {
                   </div>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">
-                  <input 
-                    type="checkbox" 
-                    checked={ssl || isRdsHost} 
-                    onChange={(e) => setSsl(e.target.checked)} 
+                  <input
+                    type="checkbox"
+                    checked={ssl || isRdsHost}
+                    onChange={(e) => setSsl(e.target.checked)}
                     disabled={isRdsHost}
-                    className="sr-only peer disabled:cursor-not-allowed" 
+                    className="sr-only peer disabled:cursor-not-allowed"
                   />
                   <div className={`w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 ${isRdsHost ? 'bg-blue-600' : ''}`}></div>
                 </label>
@@ -332,30 +332,30 @@ export function ConnectionWizard({ onConnect }: ConnectionWizardProps) {
           )}
 
           {/* Save Connection Option */}
-          <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+          <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                <Star className={`w-4 h-4 ${saveConnection ? 'text-yellow-500 fill-yellow-500' : 'text-slate-400'}`} />
+                <Star className={`w-4 h-4 ${saveConnection ? 'text-slate-600 fill-slate-600' : 'text-slate-400'}`} />
                 <span className="text-sm font-medium text-slate-700">Save this connection</span>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  checked={saveConnection} 
-                  onChange={(e) => setSaveConnection(e.target.checked)} 
-                  className="sr-only peer" 
+                <input
+                  type="checkbox"
+                  checked={saveConnection}
+                  onChange={(e) => setSaveConnection(e.target.checked)}
+                  className="sr-only peer"
                 />
-                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-yellow-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-yellow-500"></div>
+                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-slate-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-slate-600"></div>
               </label>
             </div>
             {saveConnection && (
-              <div>
+              <div className="mt-3">
                 <label className="block text-xs font-semibold text-slate-500 mb-1">Connection Name</label>
                 <input
                   type="text"
                   value={connectionName}
                   onChange={(e) => setConnectionName(e.target.value)}
-                  className="w-full p-2 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-yellow-500 outline-none"
+                  className="w-full p-2 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-slate-500 outline-none"
                   placeholder="e.g., Production DB, Staging, Local"
                 />
                 <p className="text-xs text-slate-500 mt-1">Give this connection a name to easily switch between databases later</p>
@@ -383,6 +383,18 @@ export function ConnectionWizard({ onConnect }: ConnectionWizardProps) {
               <span>Connection successful but not saved: {saveWarning}</span>
             </div>
           )}
+
+          {/* Read-Only Toggle */}
+          <div className="flex items-center justify-between px-1">
+            <div className="flex flex-col">
+              <span className="text-sm font-medium text-slate-700">Read-Only Mode</span>
+              <span className="text-xs text-slate-500">Prevent accidental writes (INSERT, UPDATE, DELETE)</span>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" className="sr-only peer" />
+              <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+            </label>
+          </div>
 
           <button
             type="submit"

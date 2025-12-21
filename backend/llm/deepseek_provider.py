@@ -31,7 +31,15 @@ class DeepSeekProvider(LLMProvider):
             except Exception as e:
                 logger.error(f"Failed to initialize DeepSeek client: {e}")
 
-    async def generate(self, prompt: str) -> str:
+    @property
+    def name(self) -> str:
+        return "deepseek"
+
+    @property
+    def model_name(self) -> str:
+        return self.model
+
+    async def generate(self, prompt: str, max_tokens: int = 512) -> str:
         """
         Generate raw text response from DeepSeek.
         """
@@ -41,7 +49,8 @@ class DeepSeekProvider(LLMProvider):
         try:
             response = await self.client.chat.completions.create(
                 model=self.model,
-                messages=[{"role": "user", "content": prompt}]
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=max_tokens
             )
             return response.choices[0].message.content
         except Exception as e:

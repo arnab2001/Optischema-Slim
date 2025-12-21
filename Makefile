@@ -11,14 +11,14 @@ help: ## Show this help message
 
 install: ## Install dependencies for Backend and Frontend
 	@echo "📦 Installing Backend dependencies..."
-	cd backend && pip install -r requirements.txt
+	cd backend && python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
 	@echo "📦 Installing Frontend dependencies..."
 	cd frontend && npm install
 	@echo "✅ Dependencies installed!"
 
 dev-backend: ## Run Backend locally (FastAPI)
 	@echo "🚀 Starting Backend on http://localhost:8080..."
-	cd backend && python3 -m uvicorn main:app --host 0.0.0.0 --port 8080 --reload
+	cd backend && ./venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8080 --reload
 
 dev-frontend: ## Run Frontend locally (Next.js)
 	@echo "🚀 Starting Frontend on http://localhost:3000..."
@@ -40,6 +40,17 @@ docker-down: ## Stop Docker services
 	docker compose down
 	@echo "✅ Services stopped!"
 
+logs: ## Show Docker logs
+	docker compose logs -f
+
+seed-sandbox: ## Seed the sandbox database (requires Docker PG running)
+	@echo "🌱 Seeding sandbox database..."
+	DATABASE_URL="postgresql://optischema:optischema_pass@localhost:5433/optischema_sandbox" ./backend/venv/bin/python scripts/seed/seed_data.py
+
+load-gen: ## Run the load generator locally
+	@echo "📈 Starting load generator..."
+	DATABASE_URL="postgresql://optischema:optischema_pass@localhost:5433/optischema_sandbox" ./backend/venv/bin/python scripts/load/generate_load.py
+
 clean: ## Clean up artifacts and caches
 	@echo "🧹 Cleaning up..."
 	find . -type d -name "__pycache__" -exec rm -rf {} +
@@ -47,10 +58,3 @@ clean: ## Clean up artifacts and caches
 	find . -type d -name ".next" -exec rm -rf {} +
 	rm -f backend/optischema.db
 	@echo "✅ Cleanup completed!"
-
-logs: ## Show Docker logs
-	docker compose logs -f
-
-build-landing: ## Build landing page for GitHub Pages
-	@echo "🚀 Building landing page for GitHub Pages..."
-	@bash scripts/build-landing.sh

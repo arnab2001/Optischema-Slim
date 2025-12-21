@@ -10,6 +10,7 @@ import {
     Clock
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { SlimVitals } from "./slim-vitals";
 
 export function TopBar() {
     const { isLiveMode, setLiveMode, lastUpdated, setLastUpdated, theme, toggleTheme } = useAppStore();
@@ -57,10 +58,10 @@ export function TopBar() {
                 <button
                     onClick={() => setLiveMode(!isLiveMode)}
                     className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${isLiveMode
-                            ? "bg-green-100 text-green-700 hover:bg-green-200"
-                            : isDark
-                                ? "bg-slate-700 text-slate-400 hover:bg-slate-600"
-                                : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                        ? "bg-green-100 text-green-700 hover:bg-green-200"
+                        : isDark
+                            ? "bg-slate-700 text-slate-400 hover:bg-slate-600"
+                            : "bg-slate-100 text-slate-500 hover:bg-slate-200"
                         }`}
                 >
                     {isLiveMode ? (
@@ -75,6 +76,8 @@ export function TopBar() {
                         </>
                     )}
                 </button>
+
+                <SlimVitals />
 
                 {lastUpdated && (
                     <div className={`flex items-center gap-1.5 text-xs ${isDark ? "text-slate-400" : "text-slate-500"
@@ -91,8 +94,8 @@ export function TopBar() {
                 <button
                     onClick={handleRefresh}
                     className={`p-2 rounded-lg transition-colors ${isDark
-                            ? "text-slate-400 hover:text-white hover:bg-slate-700"
-                            : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+                        ? "text-slate-400 hover:text-white hover:bg-slate-700"
+                        : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
                         }`}
                     title="Refresh data"
                 >
@@ -103,8 +106,8 @@ export function TopBar() {
                 <button
                     onClick={toggleTheme}
                     className={`p-2 rounded-lg transition-colors ${isDark
-                            ? "text-slate-400 hover:text-white hover:bg-slate-700"
-                            : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+                        ? "text-slate-400 hover:text-white hover:bg-slate-700"
+                        : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
                         }`}
                     title={`Switch to ${isDark ? "light" : "dark"} mode`}
                 >

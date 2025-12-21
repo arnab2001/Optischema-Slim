@@ -44,6 +44,16 @@ async def get_db_info():
     db_info = await metric_service.fetch_db_info()
     return db_info
 
+@router.get("/{queryid}")
+async def get_query_detail(queryid: str):
+    """
+    Get detailed metrics for a specific queryid.
+    """
+    result = await metric_service.fetch_single_query(queryid)
+    if not result:
+        raise HTTPException(status_code=404, detail="Query not found")
+    return result
+
 @router.post("/reset")
 async def reset_metrics():
     """

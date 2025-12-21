@@ -19,13 +19,13 @@ class SchemaService:
         try:
             async with pool.acquire() as conn:
                 rows = await conn.fetch("""
-                    SELECT table_name 
+                    SELECT table_schema, table_name 
                     FROM information_schema.tables 
-                    WHERE table_schema = 'public' 
+                    WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
                     AND table_type = 'BASE TABLE'
-                    ORDER BY table_name
+                    ORDER BY table_schema, table_name
                 """)
-                return [row['table_name'] for row in rows]
+                return [f"{row['table_schema']}.{row['table_name']}" for row in rows]
         except Exception as e:
             logger.error(f"Error listing tables: {e}")
             return []
@@ -38,27 +38,34 @@ class SchemaService:
             
         try:
             async with pool.acquire() as conn:
+                # Parse table name (allowing for schema-qualified names)
+                if "." in table_name:
+                    schema, table = table_name.split(".", 1)
+                else:
+                    schema, table = "public", table_name
+
                 # Columns
                 columns = await conn.fetch("""
                     SELECT column_name, data_type, is_nullable
                     FROM information_schema.columns 
-                    WHERE table_schema = 'public' AND table_name = $1
+                    WHERE table_schema = $1 AND table_name = $2
                     ORDER BY ordinal_position
-                """, table_name)
+                """, schema, table)
                 
                 # Indexes
                 indexes = await conn.fetch("""
                     SELECT indexname, indexdef
                     FROM pg_indexes
-                    WHERE schemaname = 'public' AND tablename = $1
-                """, table_name)
+                    WHERE schemaname = $1 AND tablename = $2
+                """, schema, table)
                 
-                # Row count estimate
+                # Row count estimate (using pg_class and pg_namespace for schema awareness)
                 row_count = await conn.fetchval("""
-                    SELECT reltuples::BIGINT
-                    FROM pg_class
-                    WHERE relname = $1
-                """, table_name)
+                    SELECT c.reltuples::BIGINT
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE n.nspname = $1 AND c.relname = $2
+                """, schema, table)
                 
                 return {
                     "table_name": table_name,

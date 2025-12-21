@@ -2,7 +2,9 @@ version: '3.8'
 
 services:
   postgres-sandbox:
-    image: postgres:14
+    build:
+      context: .
+      dockerfile: docker/postgres.Dockerfile
     container_name: optischema-postgres-sandbox
     environment:
       POSTGRES_DB: ${SANDBOX_POSTGRES_DB:-optischema_sandbox}
@@ -12,7 +14,7 @@ services:
       - "5433:5432"  # Different port to avoid conflicts
     volumes:
       - postgres_sandbox_data:/var/lib/postgresql/data
-      - ./postgresql.conf:/etc/postgresql/postgresql.conf
+      - ./scripts/seed/postgresql.conf:/etc/postgresql/postgresql.conf
     command: postgres -c config_file=/etc/postgresql/postgresql.conf
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${SANDBOX_POSTGRES_USER:-optischema} -d ${SANDBOX_POSTGRES_DB:-optischema_sandbox}"]
@@ -22,11 +24,11 @@ services:
 
   optischema-sandbox:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: docker/backend.Dockerfile
     container_name: optischema-sandbox
     environment:
-      - DATABASE_URL=${SANDBOX_DATABASE_URL}
+      - DATABASE_URL=${SANDBOX_DATABASE_URL:-postgresql://optischema:optischema_pass@postgres-sandbox:5432/optischema_sandbox}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
@@ -41,12 +43,29 @@ services:
     command: >
       sh -c "
         echo 'Waiting for sandbox database...' &&
-        sleep 10 &&
+        sleep 5 &&
         echo 'Running sandbox setup...' &&
-        python /scripts/seed_data.py &&
+        python /scripts/seed/seed_complex.py &&
         echo 'Starting sandbox API...' &&
         uvicorn main:app --host 0.0.0.0 --port 8080 --reload
       "
+
+  query-generator:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    container_name: query-generator
+    environment:
+      - DATABASE_URL=${SANDBOX_DATABASE_URL:-postgresql://optischema:optischema_pass@postgres-sandbox:5432/optischema_sandbox}
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      postgres-sandbox:
+        condition: service_healthy
+      optischema-sandbox:
+        condition: service_started
+    volumes:
+      - ./scripts:/scripts
+    command: python /scripts/load/generate_load.py
 
 volumes:
   postgres_sandbox_data: 

@@ -74,13 +74,13 @@ app.add_middleware(
 )
 
 # Import routers
-from routers import metrics, analysis, connection, settings, health, ai_analysis
+from routers import metrics, analysis, connection, settings as settings_router, health, ai_analysis
 
 # Include routers
 app.include_router(metrics.router)
 app.include_router(analysis.router)
 app.include_router(connection.router, prefix="/api/connection", tags=["connection"])
-app.include_router(settings.router)
+app.include_router(settings_router.router)
 app.include_router(health.router)
 app.include_router(ai_analysis.router)
 

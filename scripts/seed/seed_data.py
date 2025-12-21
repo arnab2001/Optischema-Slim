@@ -29,6 +29,11 @@ except ImportError:
 async def create_demo_schema(conn):
     """Create demo tables with realistic structure."""
     
+    # Truncate existing tables if they exist
+    await conn.execute("""
+        TRUNCATE TABLE demo_order_items, demo_orders, demo_users, demo_products, demo_logs RESTART IDENTITY CASCADE;
+    """)
+    
     # Create users table
     await conn.execute("""
         CREATE TABLE IF NOT EXISTS demo_users (

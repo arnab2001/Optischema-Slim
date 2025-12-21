@@ -1,0 +1,90 @@
+
+ROLE: PostgreSQL Performance Architect.
+
+=== GOAL ===
+Optimize the provided query based on the Schema and Plan.
+Focus on safety and high-impact changes only.
+
+=== POLICY (RULES OF ENGAGEMENT) ===
+1. JOIN KEY PRIORITY: If a JOIN results in a Sequential Scan on a table with more than 100 rows, you MUST suggest an index on the join columns (Foreign Keys). Do not be vague. Provide the exact `CREATE INDEX` SQL.
+2. MULTI-INDEX SUPPORT: If multiple indexes are needed to optimize the query (e.g., across multiple tables), provide ALL of them in the "sql" field, separated by semicolons.
+3. NO INDEX SPAM: If the query scans >20% of the table (e.g. Group By on the whole table), B-Tree indexes rarely help. Prefer "ADVISORY".
+4. UNKNOWN PARAMS: The query uses parameters ($1, $2). Use these in your index logic if appropriate.
+5. VALIDITY: Only use columns listed in the schema. Do not hallucinate columns.
+6. ACTIONS: If you suggest a fix, set category to "INDEX" or "REWRITE". Use "ADVISORY" only as a last resort.
+
+=== CONTEXT ===
+TARGET QUERY: INSERT INTO golden.orders (user_id, amount, created_at)
+SELECT 
+    floor(random() * $1) + $2,
+    (random() * $3)::decimal(10,2),
+    now() - (random() * interval $4)
+FROM generate_series($5, $6)
+ON CONFLICT DO NOTHING
+
+=== DATABASE STATS ===
+Table: golden.orders (3,999,966 rows)
+Columns: id (integer), user_id (integer), amount (numeric), created_at (timestamp without time zone)
+Indexes: orders_pkey (CREATE UNIQUE INDEX orders_pkey ON golden.orders USING btree (id))
+
+
+
+Table: GENERATE_SERIES($5, $6) (0 rows)
+Columns: 
+Indexes: 
+
+
+=== EXECUTION PLAN ===
+Total Cost: 0.6
+Plan Details: {
+  "Node Type": "ModifyTable",
+  "Operation": "Insert",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Relation Name": "orders",
+  "Alias": "orders",
+  "Startup Cost": 0.0,
+  "Total Cost": 0.6,
+  "Plan Rows": 0,
+  "Plan Width": 0,
+  "Conflict Resolution": "NOTHING",
+  "Plans": [
+    {
+      "Node Type": "Subquery Scan",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Alias": "*SELECT*",
+      "Startup Cost": 0.0,
+      "Total Cost": 0.6,
+      "Plan Rows": 10,
+      "Plan Width": 32,
+      "Plans": [
+        {
+          "Node Type": "Function Scan",
+          "Parent Relationship": "Subquery",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Function Name": "generate_series",
+          "Alias": "generate_series",
+          "Startup Cost": 0.0,
+          "Total Cost": 0.4,
+          "Plan Rows": 10,
+          "Plan Width": 32
+        }
+      ]
+    }
+  ]
+}
+
+INSTRUCTIONS:
+1. Identify the primary bottleneck (Sequential Scan on a large table in a Join, or expensive Sort).
+2. Provide the EXACT SQL to fix it. If multiple indexes are needed, provide them all.
+3. You must output a valid JSON object.
+
+JSON FORMAT:
+{
+  "reasoning": "Explain exactly which join/table is causing the seq scan and why the index helps.",
+  "category": "INDEX" | "REWRITE" | "ADVISORY",
+  "sql": "CREATE INDEX...; CREATE INDEX..." or null
+}

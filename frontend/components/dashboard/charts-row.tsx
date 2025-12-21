@@ -116,34 +116,31 @@ export function ChartsRow({ metrics }: ChartsRowProps) {
             {/* Chart C: Time Consumed */}
             <div className={cardClass}>
                 <h3 className={titleClass}>Top Tables by Time</h3>
-                <div className="h-48 w-full">
+                <div className="h-48 w-full overflow-y-auto pr-2">
                     {stats.timeConsumed.length > 0 ? (
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart layout="vertical" data={stats.timeConsumed} margin={{ left: 20 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "#334155" : "#e2e8f0"} horizontal={false} />
-                                <XAxis type="number" hide />
-                                <YAxis
-                                    dataKey="name"
-                                    type="category"
-                                    width={80}
-                                    stroke={isDark ? "#94a3b8" : "#64748b"}
-                                    fontSize={10}
-                                    tickLine={false}
-                                    axisLine={false}
-                                />
-                                <Tooltip
-                                    cursor={{ fill: isDark ? "#334155" : "#f1f5f9" }}
-                                    contentStyle={{
-                                        backgroundColor: isDark ? "#1e293b" : "#fff",
-                                        borderColor: isDark ? "#334155" : "#e2e8f0",
-                                        color: isDark ? "#f8fafc" : "#0f172a",
-                                        fontSize: "12px"
-                                    }}
-                                    formatter={(value: number) => [`${value.toFixed(2)}ms`, 'Total Time']}
-                                />
-                                <Bar dataKey="value" fill="#8b5cf6" radius={[0, 4, 4, 0]} barSize={20} />
-                            </BarChart>
-                        </ResponsiveContainer>
+                        <div className="space-y-3">
+                            {(() => {
+                                const maxVal = Math.max(...stats.timeConsumed.map(d => d.value));
+                                return stats.timeConsumed.map((item, i) => (
+                                    <div key={i} className="w-full">
+                                        <div className="flex justify-between text-xs mb-1">
+                                            <span className={`font-medium ${isDark ? "text-slate-300" : "text-slate-700"}`}>
+                                                {item.name}
+                                            </span>
+                                            <span className={`font-mono ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                                                {item.value.toFixed(2)}ms
+                                            </span>
+                                        </div>
+                                        <div className={`w-full h-2 rounded-full ${isDark ? "bg-slate-700" : "bg-slate-100"}`}>
+                                            <div
+                                                className="h-full rounded-full bg-violet-500 transition-all duration-500"
+                                                style={{ width: `${(item.value / maxVal) * 100}%` }}
+                                            />
+                                        </div>
+                                    </div>
+                                ));
+                            })()}
+                        </div>
                     ) : (
                         <div className="h-full flex items-center justify-center text-xs text-slate-500">
                             No table data available

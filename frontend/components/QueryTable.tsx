@@ -14,17 +14,31 @@ type SortField = 'time_percentage' | 'mean_time' | 'calls' | 'cache_hit' | 'row_
 type FilterType = 'slow' | 'frequent' | 'high_io' | 'all'
 
 function getCacheBadge(percentage: number) {
-  if (isNaN(percentage)) return <span className="bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full text-xs">—</span>;
-  if (percentage < 90) return <span className="bg-red-100 text-red-800 px-2 py-0.5 rounded-full text-xs">{percentage.toFixed(0)}%</span>;
-  if (percentage < 99) return <span className="bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full text-xs">{percentage.toFixed(0)}%</span>;
-  return <span className="bg-green-100 text-green-800 px-2 py-0.5 rounded-full text-xs">{percentage.toFixed(0)}%</span>;
+  if (isNaN(percentage)) return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-800 border border-slate-200">UNKNOWN</span>;
+  if (percentage < 90) return (
+    <div className="flex gap-1">
+      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-50 text-red-700 border border-red-200">DISK</span>
+      <span className="text-xs text-red-600 font-mono">{percentage.toFixed(0)}%</span>
+    </div>
+  );
+  if (percentage < 99) return (
+    <div className="flex gap-1">
+      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-yellow-50 text-yellow-700 border border-yellow-200">MIXED</span>
+      <span className="text-xs text-yellow-600 font-mono">{percentage.toFixed(0)}%</span>
+    </div>
+  );
+  return (
+    <div className="flex gap-1">
+      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-50 text-green-700 border border-green-200">RAM</span>
+    </div>
+  );
 }
 
 function getLatencyBadge(ms: number) {
   if (isNaN(ms)) return <span className="bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full text-xs">—</span>;
-  if (ms >= 100) return <span className="bg-red-100 text-red-800 px-2 py-0.5 rounded-full text-xs">Slow</span>;
-  if (ms >= 10) return <span className="bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full text-xs">Moderate</span>;
-  return <span className="bg-green-100 text-green-800 px-2 py-0.5 rounded-full text-xs">Fast</span>;
+  if (ms >= 100) return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700 border border-red-200">SLOW</span>;
+  if (ms >= 10) return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-50 text-yellow-700 border border-yellow-200">AVG</span>;
+  return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700 border border-green-200">FAST</span>;
 }
 
 function getRowEfficiencyBadge(eff: number) {
@@ -182,8 +196,8 @@ export default function QueryTable({ metrics, onDrillDown, onLoadMore, hasMore =
                 key={filter.key}
                 onClick={() => setActiveFilter(filter.key as FilterType)}
                 className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${activeFilter === filter.key
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
                   }`}
               >
                 {filter.label} ({filter.count})
@@ -212,28 +226,28 @@ export default function QueryTable({ metrics, onDrillDown, onLoadMore, hasMore =
                 <tr className="bg-muted/60 border-b border-border">
                   <th className="sticky left-0 bg-muted/60 z-30 px-3 py-3 text-left font-medium text-foreground">SQL</th>
                   <th
-                    className="px-3 py-3 text-left font-medium text-foreground cursor-pointer hover:bg-muted/80 transition-colors"
+                    className="px-3 py-3 text-right font-medium text-foreground cursor-pointer hover:bg-muted/80 transition-colors"
                     onClick={() => handleSort('time_percentage')}
                   >
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center justify-end gap-1">
                       % Time
                       {getSortIcon('time_percentage')}
                     </div>
                   </th>
                   <th
-                    className="px-3 py-3 text-left font-medium text-foreground cursor-pointer hover:bg-muted/80 transition-colors"
+                    className="px-3 py-3 text-right font-medium text-foreground cursor-pointer hover:bg-muted/80 transition-colors"
                     onClick={() => handleSort('mean_time')}
                   >
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center justify-end gap-1">
                       Avg ms
                       {getSortIcon('mean_time')}
                     </div>
                   </th>
                   <th
-                    className="px-3 py-3 text-left font-medium text-foreground cursor-pointer hover:bg-muted/80 transition-colors"
+                    className="px-3 py-3 text-right font-medium text-foreground cursor-pointer hover:bg-muted/80 transition-colors"
                     onClick={() => handleSort('calls')}
                   >
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center justify-end gap-1">
                       Calls
                       {getSortIcon('calls')}
                     </div>
@@ -248,19 +262,19 @@ export default function QueryTable({ metrics, onDrillDown, onLoadMore, hasMore =
                     </div>
                   </th>
                   <th
-                    className="px-3 py-3 text-left font-medium text-foreground cursor-pointer hover:bg-muted/80 transition-colors"
+                    className="px-3 py-3 text-right font-medium text-foreground cursor-pointer hover:bg-muted/80 transition-colors"
                     onClick={() => handleSort('row_efficiency')}
                   >
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center justify-end gap-1">
                       Row Eff.
                       {getSortIcon('row_efficiency')}
                     </div>
                   </th>
                   <th
-                    className="px-3 py-3 text-left font-medium text-foreground cursor-pointer hover:bg-muted/80 transition-colors"
+                    className="px-3 py-3 text-right font-medium text-foreground cursor-pointer hover:bg-muted/80 transition-colors"
                     onClick={() => handleSort('efficiency_score')}
                   >
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center justify-end gap-1">
                       Efficiency
                       {getSortIcon('efficiency_score')}
                     </div>
@@ -304,65 +318,46 @@ export default function QueryTable({ metrics, onDrillDown, onLoadMore, hasMore =
                         </div>
                       </td>
                       {/* % Time Bar */}
-                      <td className="px-3 min-w-[120px]">
-                        <div className="flex items-center gap-2">
-                          <div className="w-[100px] bg-gray-200 rounded h-3 relative">
+                      <td className="px-3 min-w-[120px] text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <div className="w-[80px] bg-slate-100 rounded h-3 relative overflow-hidden">
                             <div
-                              className="absolute left-0 top-0 h-3 rounded bg-primary transition-all duration-300"
+                              className="absolute right-0 top-0 h-3 rounded bg-primary/80 transition-all duration-300"
                               style={{ width: `${Math.min(100, metric.time_percentage)}%` }}
                             />
-                            <span className="absolute left-1 top-0 text-xs font-semibold text-foreground" style={{ zIndex: 2 }}>
-                              {metric.time_percentage.toFixed(1)}%
-                            </span>
                           </div>
-                          <Tooltip
-                            id={`time-tooltip-${idx}`}
-                            content={`This query consumed ${metric.time_percentage.toFixed(1)}% of total DB runtime.`}
-                          />
-                          <div data-tooltip-id={`time-tooltip-${idx}`} className="cursor-help">
-                            <div className="w-2 h-2 bg-primary rounded-full opacity-60"></div>
-                          </div>
+                          <span className="text-xs font-mono font-medium text-foreground tabular-nums w-12 text-right">
+                            {metric.time_percentage.toFixed(1)}%
+                          </span>
                         </div>
                       </td>
                       {/* Avg ms with Latency Badge */}
-                      <td className="px-3">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{msDisplay(metric.mean_time)}</span>
-                          {getLatencyBadge(metric.mean_time)}
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-1">
-                          min {msDisplay(metric.min_time)} / max {msDisplay(metric.max_time)}
+                      <td className="px-3 text-right">
+                        <div className="flex flex-col items-end gap-1">
+                          <div className="flex items-center gap-2">
+                            {getLatencyBadge(metric.mean_time)}
+                            <span className="font-mono font-medium tabular-nums">{msDisplay(metric.mean_time)}</span>
+                          </div>
                         </div>
                       </td>
                       {/* Calls */}
-                      <td className="px-3 font-medium">{metric.calls.toLocaleString()}</td>
+                      <td className="px-3 text-right font-mono tabular-nums text-slate-600">{metric.calls.toLocaleString()}</td>
                       {/* Cache Hit % */}
                       <td className="px-3">{getCacheBadge(cache)}</td>
                       {/* Row Efficiency */}
-                      <td className="px-3">
-                        <div className="flex items-center gap-2">
-                          {getRowEfficiencyBadge(eff)}
-                          <Tooltip
-                            id={`eff-tooltip-${idx}`}
-                            content="Rows returned / rows read. Lower = wasted effort."
-                          />
-                          <div data-tooltip-id={`eff-tooltip-${idx}`} className="cursor-help">
-                            <div className="w-2 h-2 bg-blue-500 rounded-full opacity-60"></div>
+                      <td className="px-3 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <span className="font-mono tabular-nums text-sm">{eff.toFixed(0)}%</span>
+                          <div className="w-16 bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                            <div className={`h-full ${eff < 50 ? 'bg-red-500' : 'bg-green-500'}`} style={{ width: `${eff}%` }}></div>
                           </div>
                         </div>
                       </td>
                       {/* Efficiency Score */}
-                      <td className="px-3">
-                        <div className="flex items-center gap-2">
-                          {getEfficiencyScoreBadge(efficiencyScore)}
-                          <Tooltip
-                            id={`efficiency-tooltip-${idx}`}
-                            content="Overall efficiency score based on speed, cache usage, and resource consumption."
-                          />
-                          <div data-tooltip-id={`efficiency-tooltip-${idx}`} className="cursor-help">
-                            <div className="w-2 h-2 bg-purple-500 rounded-full opacity-60"></div>
-                          </div>
-                        </div>
+                      <td className="px-3 text-right">
+                        <span className={`font-mono font-bold tabular-nums ${efficiencyScore < 50 ? 'text-red-600' : 'text-green-600'}`}>
+                          {efficiencyScore.toFixed(0)}
+                        </span>
                       </td>
                       {/* Drill-down */}
                       <td className="px-3">

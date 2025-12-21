@@ -60,8 +60,25 @@ async def init_db():
         # Add unique constraint on connection credentials (host, port, database, username)
         # This prevents duplicate connections while allowing same DB with different users
         await db.execute("""
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_connection_credentials
-            ON saved_connections (host, port, database, username)
+            CREATE TABLE IF NOT EXISTS benchmark_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scenario_id TEXT,
+                query_text TEXT,
+                prompt TEXT,
+                raw_response TEXT,
+                actual_category TEXT,
+                expected_category TEXT,
+                actual_sql TEXT,
+                alignment_score FLOAT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS health_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                data TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
         """)
         await db.commit()
     logger.info(f"Initialized SQLite database at {DB_PATH}")
@@ -311,4 +328,59 @@ async def update_last_used(connection_id: int):
             WHERE id = ?
         """, (connection_id,))
         await db.commit()
+
+async def save_health_result(data: Dict[str, Any]):
+    """Save a health scan result."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO health_results (data) VALUES (?)",
+            (json.dumps(data),)
+        )
+        await db.commit()
+
+async def get_latest_health_result() -> Optional[Dict[str, Any]]:
+    """Get the latest health scan result."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT data FROM health_results ORDER BY created_at DESC LIMIT 1") as cursor:
+            row = await cursor.fetchone()
+            if row:
+                return json.loads(row["data"])
+            return None
+
+async def get_health_history(limit: int = 10) -> List[Dict[str, Any]]:
+    """Get historical health scan results."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT id, data, created_at FROM health_results ORDER BY created_at DESC LIMIT ?", (limit,)) as cursor:
+            rows = await cursor.fetchall()
+            results = []
+            for row in rows:
+                try:
+                    data = json.loads(row["data"])
+                    data["id"] = row["id"]
+                    data["created_at"] = row["created_at"]
+                    results.append(data)
+                except:
+                    continue
+            return results
+
+async def enforce_health_retention(keep_n: int = 10):
+    """Delete old health results, keeping only the latest N."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        # Get IDs to keep
+        async with db.execute("SELECT id FROM health_results ORDER BY created_at DESC LIMIT ?", (keep_n,)) as cursor:
+            rows = await cursor.fetchall()
+            if not rows:
+                return
+            
+            # The last ID we keep is the cutoff
+            oldest_id_to_keep = rows[-1][0]
+            
+            # Delete anything older (smaller ID) than that, or simply NOT IN the list
+            # A cleaner way is DELETE WHERE id NOT IN (SELECT id FROM ... LIMIT N) 
+            # but sqlite support for LIMIT in subqueries can be tricky in older versions.
+            # We'll use the ID comparison assuming auto-increment.
+            await db.execute("DELETE FROM health_results WHERE id < ?", (oldest_id_to_keep,))
+            await db.commit()
 

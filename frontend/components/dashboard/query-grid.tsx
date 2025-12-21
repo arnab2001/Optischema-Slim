@@ -123,19 +123,19 @@ export function QueryGrid({
             <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                     <thead className={isDark ? "bg-slate-900" : "bg-slate-50"}>
-                        <tr className={`text-xs uppercase tracking-wide ${isDark ? "text-slate-500" : "text-slate-400"
+                        <tr className={`text-[10px] uppercase tracking-widest font-bold ${isDark ? "text-slate-500 border-b border-slate-700" : "text-slate-400 border-b border-slate-100"
                             }`}>
-                            <th className="px-4 py-3 text-left w-1/2">Query</th>
-                            <th className="px-4 py-3 text-left w-16">IO</th>
-                            <th className="px-4 py-3 text-left w-24">Impact</th>
+                            <th className="px-6 py-4 text-left">Query Source</th>
+                            <th className="px-6 py-4 text-center w-16">Health</th>
+                            <th className="px-6 py-4 text-left w-48">Resource Impact (%)</th>
                             <SortableHeader field="calls" label="Calls" />
-                            <SortableHeader field="mean_time" label="Mean (ms)" />
-                            <SortableHeader field="total_time" label="Total (ms)" />
-                            <th className="px-4 py-3 w-8"></th>
+                            <SortableHeader field="mean_time" label="Latency" />
+                            <SortableHeader field="total_time" label="Total Time" />
+                            <th className="px-6 py-4 w-8"></th>
                         </tr>
                     </thead>
-                    <tbody className={`divide-y ${isDark ? "divide-slate-700" : "divide-slate-100"}`}>
-                        {sortedMetrics.slice(0, 50).map((m, idx) => {
+                    <tbody className={`divide-y ${isDark ? "divide-slate-700/50" : "divide-slate-100"}`}>
+                        {sortedMetrics.map((m, idx) => {
                             const impactPercent = totalDbTime > 0
                                 ? (m.total_time / totalDbTime) * 100
                                 : 0;
@@ -145,74 +145,74 @@ export function QueryGrid({
                                     key={`${m.queryid}-${idx}`}
                                     onClick={() => onRowClick(m.queryid)}
                                     className={`group cursor-pointer transition-all duration-150 ${isDark
-                                        ? "hover:bg-slate-700/70"
-                                        : "hover:bg-blue-50/50"
+                                        ? "hover:bg-slate-700/50"
+                                        : "hover:bg-blue-50/40"
                                         }`}
                                 >
-                                    <td className="px-4 py-3">
+                                    <td className="px-6 py-5">
                                         <div
-                                            className={`font-mono text-xs truncate max-w-md ${isDark ? "text-slate-300" : "text-slate-700"
+                                            className={`font-mono text-[11px] truncate max-w-lg ${isDark ? "text-slate-200" : "text-slate-800"
                                                 }`}
                                             dangerouslySetInnerHTML={{
-                                                __html: highlightSQL(m.query.substring(0, 80) + (m.query.length > 80 ? "..." : ""))
+                                                __html: highlightSQL(m.query.substring(0, 100) + (m.query.length > 100 ? "..." : ""))
                                             }}
                                         />
                                     </td>
-                                    <td className="px-4 py-3">
+                                    <td className="px-6 py-5">
                                         {(() => {
                                             const hits = m.shared_blks_hit || 0;
                                             const reads = m.shared_blks_read || 0;
                                             const total = hits + reads;
                                             const ratio = total > 0 ? (hits / total) * 100 : 0;
 
-                                            let color = "bg-red-500";
-                                            if (ratio > 99) color = "bg-green-500";
-                                            else if (ratio > 90) color = "bg-yellow-500";
+                                            let color = "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]";
+                                            if (ratio > 99) color = "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.3)]";
+                                            else if (ratio > 90) color = "bg-yellow-500 shadow-[0_0_8px_rgba(234,179,8,0.3)]";
 
                                             return (
                                                 <div className="flex justify-center" title={`Cache Hit Ratio: ${ratio.toFixed(1)}%`}>
-                                                    <div className={`w-2.5 h-2.5 rounded-full ${color}`} />
+                                                    <div className={`w-2 h-2 rounded-full ${color}`} />
                                                 </div>
                                             );
                                         })()}
                                     </td>
-                                    <td className="px-4 py-3">
-                                        <div className="flex items-center gap-2">
-                                            <div className={`w-20 h-2 rounded-full overflow-hidden ${isDark ? "bg-slate-700" : "bg-slate-200"
+                                    <td className="px-6 py-5">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`flex-1 h-1.5 rounded-full overflow-hidden ${isDark ? "bg-slate-700" : "bg-slate-100"
                                                 }`}>
                                                 <div
-                                                    className={`h-full rounded-full transition-all ${impactPercent > 30
+                                                    className={`h-full rounded-full transition-all duration-1000 ${impactPercent > 20
                                                         ? "bg-red-500"
-                                                        : impactPercent > 10
-                                                            ? "bg-yellow-500"
-                                                            : "bg-green-500"
+                                                        : impactPercent > 5
+                                                            ? "bg-amber-500"
+                                                            : "bg-blue-500"
                                                         }`}
                                                     style={{ width: `${Math.min(impactPercent, 100)}%` }}
                                                 />
                                             </div>
-                                            <span className={`text-xs ${isDark ? "text-slate-500" : "text-slate-400"}`}>
+                                            <span className={`text-[10px] font-bold min-w-[32px] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
                                                 {impactPercent.toFixed(1)}%
                                             </span>
                                         </div>
                                     </td>
-                                    <td className={`px-4 py-3 text-right tabular-nums ${isDark ? "text-slate-300" : "text-slate-700"
+                                    <td className={`px-6 py-5 text-right tabular-nums text-xs ${isDark ? "text-slate-300" : "text-slate-600"
                                         }`}>
                                         {m.calls.toLocaleString()}
                                     </td>
-                                    <td className={`px-4 py-3 text-right tabular-nums ${m.mean_time > 500
-                                        ? "text-red-500 font-medium"
-                                        : isDark ? "text-slate-300" : "text-slate-700"
+                                    <td className={`px-6 py-5 text-right tabular-nums text-xs ${m.mean_time > 500
+                                        ? "text-red-500 font-bold"
+                                        : isDark ? "text-slate-300" : "text-slate-600"
                                         }`}>
-                                        {m.mean_time.toFixed(2)}
+                                        {m.mean_time.toFixed(1)}ms
                                     </td>
-                                    <td className={`px-4 py-3 text-right tabular-nums ${isDark ? "text-slate-300" : "text-slate-700"
+                                    <td className={`px-6 py-5 text-right tabular-nums text-xs font-semibold ${isDark ? "text-slate-200" : "text-slate-900"
                                         }`}>
-                                        {m.total_time.toFixed(0).toLocaleString()}
+                                        {m.total_time.toFixed(0).toLocaleString()}ms
                                     </td>
-                                    <td className="px-4 py-3">
+                                    <td className="px-6 py-5">
                                         <ChevronRight className={`w-4 h-4 transition-all group-hover:translate-x-1 ${isDark
-                                            ? "text-slate-600 group-hover:text-slate-300"
-                                            : "text-slate-400 group-hover:text-slate-600"
+                                            ? "text-slate-600 group-hover:text-blue-400"
+                                            : "text-slate-300 group-hover:text-blue-600"
                                             }`} />
                                     </td>
                                 </tr>

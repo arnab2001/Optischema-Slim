@@ -7,14 +7,16 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y gcc pkg-config build-essential curl && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
-COPY requirements.txt .
+COPY backend/requirements.txt .
 
 # Install Python dependencies
 RUN pip install --upgrade pip setuptools==68.2.2 wheel
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY . .
+COPY backend/ .
+# Also copy scripts if they are needed inside the container (they are mounted in compose, but good for build)
+# COPY scripts/ /scripts/
 
 # Create cache directory
 RUN mkdir -p /app/cache

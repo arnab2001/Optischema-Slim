@@ -32,9 +32,8 @@ interface SavedConnection {
 }
 
 const navItems = [
-    { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/analytics", label: "Analytics", icon: BarChart3 },
-    { href: "/saved", label: "Saved Optimizations", icon: Bookmark },
+    { href: "/dashboard", label: "Monitor", icon: LayoutDashboard },
+    { href: "/health", label: "Health", icon: BarChart3 },
     { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -58,16 +57,16 @@ export function Sidebar() {
                 fetch(`${apiUrl}/api/connection/saved`),
                 fetch(`${apiUrl}/api/connection/status`)
             ]);
-            
+
             if (savedRes.ok) {
                 const data = await savedRes.json();
                 setSavedConnections(data.connections || []);
             }
-            
+
             if (statusRes.ok) {
                 const status = await statusRes.json();
                 setActiveConnectionId(status.saved_connection_id);
-                
+
                 // Find the name of the active connection
                 if (status.saved_connection_id) {
                     const activeConn = savedConnections.find(c => c.id === status.saved_connection_id);
@@ -101,14 +100,14 @@ export function Sidebar() {
 
     const handleSwitchConnection = async (connectionId: number) => {
         if (switching || connectionId === activeConnectionId) return;
-        
+
         setSwitching(true);
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
         try {
             const response = await fetch(`${apiUrl}/api/connection/switch/${connectionId}`, {
                 method: 'POST'
             });
-            
+
             if (response.ok) {
                 await fetchConnections();
                 setConnectionDropdownOpen(false);
@@ -166,8 +165,8 @@ export function Sidebar() {
                         <button
                             onClick={() => setConnectionDropdownOpen(!connectionDropdownOpen)}
                             className={`w-full p-3 rounded-lg text-left transition-colors ${isDark
-                                    ? "bg-slate-700 hover:bg-slate-600"
-                                    : "bg-slate-50 hover:bg-slate-100"
+                                ? "bg-slate-700 hover:bg-slate-600"
+                                : "bg-slate-50 hover:bg-slate-100"
                                 }`}
                         >
                             <div className="flex items-center justify-between">
@@ -219,11 +218,10 @@ export function Sidebar() {
                                             key={conn.id}
                                             onClick={() => handleSwitchConnection(conn.id)}
                                             disabled={switching || conn.id === activeConnectionId}
-                                            className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
-                                                conn.id === activeConnectionId
-                                                    ? isDark ? "bg-blue-600/20 text-blue-400" : "bg-blue-50 text-blue-600"
-                                                    : isDark ? "text-slate-300 hover:bg-slate-600" : "text-slate-600 hover:bg-slate-50"
-                                            } ${switching ? "opacity-50 cursor-wait" : ""}`}
+                                            className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${conn.id === activeConnectionId
+                                                ? isDark ? "bg-blue-600/20 text-blue-400" : "bg-blue-50 text-blue-600"
+                                                : isDark ? "text-slate-300 hover:bg-slate-600" : "text-slate-600 hover:bg-slate-50"
+                                                } ${switching ? "opacity-50 cursor-wait" : ""}`}
                                         >
                                             {conn.id === activeConnectionId ? (
                                                 <Check className="w-4 h-4 shrink-0" />
@@ -240,7 +238,7 @@ export function Sidebar() {
                                     ))}
                                 </div>
                             )}
-                            
+
                             {/* Add New Connection */}
                             <Link
                                 href="/"
@@ -266,12 +264,12 @@ export function Sidebar() {
                                 key={item.href}
                                 href={item.href}
                                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${isActive
-                                        ? isDark
-                                            ? "bg-blue-600 text-white"
-                                            : "bg-blue-50 text-blue-600"
-                                        : isDark
-                                            ? "text-slate-400 hover:text-white hover:bg-slate-700"
-                                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                                    ? isDark
+                                        ? "bg-blue-600 text-white"
+                                        : "bg-blue-50 text-blue-600"
+                                    : isDark
+                                        ? "text-slate-400 hover:text-white hover:bg-slate-700"
+                                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                                     }`}
                             >
                                 <Icon className="w-5 h-5 shrink-0" />
@@ -288,8 +286,8 @@ export function Sidebar() {
                     <button
                         onClick={toggleSidebar}
                         className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg transition-colors ${isDark
-                                ? "text-slate-400 hover:text-white hover:bg-slate-700"
-                                : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+                            ? "text-slate-400 hover:text-white hover:bg-slate-700"
+                            : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
                             }`}
                     >
                         {isSidebarCollapsed ? (

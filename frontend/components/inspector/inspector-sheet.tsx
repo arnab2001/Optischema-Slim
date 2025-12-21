@@ -1,9 +1,13 @@
 "use client";
 
 import { useAppStore } from "@/store/appStore";
-import { X, Copy, ExternalLink, Code, BarChart3, Table2, Zap, Info } from "lucide-react";
+import { X, Copy, ExternalLink, Code, BarChart3, Table2, Zap, Info, Play } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { PlanNode } from "./plan-node";
+import { VerificationCard } from "./verification-card";
 
 interface QueryMetric {
     queryid: string;
@@ -33,6 +37,8 @@ export function InspectorSheet({ query, isOpen, onClose }: InspectorSheetProps) 
         suggestion?: string;
         statement_type?: string;
     } | null>(null);
+    const [verifying, setVerifying] = useState(false);
+    const [verificationResult, setVerificationResult] = useState<any>(null);
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
@@ -40,6 +46,7 @@ export function InspectorSheet({ query, isOpen, onClose }: InspectorSheetProps) 
     useEffect(() => {
         setAnalysisResult(null);
         setAnalysisError(null);
+        setVerificationResult(null);
         setActiveTab("sql");
     }, [query?.queryid]);
 
@@ -73,7 +80,7 @@ export function InspectorSheet({ query, isOpen, onClose }: InspectorSheetProps) 
         setAnalyzing(true);
         setAnalysisError(null);
         setAnalysisResult(null);
-        
+
         try {
             const res = await fetch(`${apiUrl}/api/analysis/analyze`, {
                 method: "POST",
@@ -88,7 +95,7 @@ export function InspectorSheet({ query, isOpen, onClose }: InspectorSheetProps) 
             } else {
                 const errorData = await res.json().catch(() => ({ detail: "Analysis failed" }));
                 const detail = errorData.detail || {};
-                
+
                 // Handle structured error response
                 if (typeof detail === "object" && detail.message) {
                     setAnalysisError({
@@ -110,6 +117,40 @@ export function InspectorSheet({ query, isOpen, onClose }: InspectorSheetProps) 
             });
         } finally {
             setAnalyzing(false);
+        }
+    };
+
+    const verifyImpact = async () => {
+        if (!query || !analysisResult?.suggestion?.sql) return;
+
+        setVerifying(true);
+        setVerificationResult(null);
+
+        try {
+            const res = await fetch(`${apiUrl}/api/analysis/verify`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    query: query.query,
+                    sql: analysisResult.suggestion.sql
+                }),
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                setVerificationResult(data);
+                if (data.error) {
+                    toast.error("Simulation failed");
+                } else {
+                    toast.success("Simulation complete");
+                }
+            } else {
+                toast.error("Verification request failed");
+            }
+        } catch (e) {
+            toast.error("Network error during verification");
+        } finally {
+            setVerifying(false);
         }
     };
 
@@ -237,13 +278,12 @@ export function InspectorSheet({ query, isOpen, onClose }: InspectorSheetProps) 
                             <button
                                 onClick={runAnalysis}
                                 disabled={analyzing}
-                                className={`w-full py-3 rounded-lg font-medium flex items-center justify-center gap-2 disabled:opacity-50 ${
-                                    analysisError
-                                        ? isDark
-                                            ? "bg-yellow-600 hover:bg-yellow-700 text-white"
-                                            : "bg-yellow-600 hover:bg-yellow-700 text-white"
-                                        : "bg-blue-600 hover:bg-blue-700 text-white"
-                                }`}
+                                className={`w-full py-3 rounded-lg font-medium flex items-center justify-center gap-2 disabled:opacity-50 ${analysisError
+                                    ? isDark
+                                        ? "bg-yellow-600 hover:bg-yellow-700 text-white"
+                                        : "bg-yellow-600 hover:bg-yellow-700 text-white"
+                                    : "bg-blue-600 hover:bg-blue-700 text-white"
+                                    }`}
                             >
                                 {analyzing ? (
                                     <>
@@ -360,22 +400,74 @@ export function InspectorSheet({ query, isOpen, onClose }: InspectorSheetProps) 
                                                         Copy
                                                     </button>
                                                 </div>
-                                                <pre className="p-3 text-xs text-slate-300 font-mono overflow-x-auto">
-                                                    {analysisResult.suggestion.sql}
-                                                </pre>
+                                                <div className="text-xs">
+                                                    <SyntaxHighlighter
+                                                        language="sql"
+                                                        style={vscDarkPlus}
+                                                        customStyle={{ margin: 0, padding: '12px', background: 'transparent' }}
+                                                        showLineNumbers={false}
+                                                    >
+                                                        {analysisResult.suggestion.sql}
+                                                    </SyntaxHighlighter>
+                                                </div>
                                             </div>
                                         </div>
                                     )}
+
+                                    {/* Verification Result Display */}
+                                    {verificationResult && (
+                                        <VerificationCard result={verificationResult} />
+                                    )}
+
+                                    {/* Evaluation Action Bar */}
+                                    <div className={`flex items-center justify-between mt-4 pt-4 border-t ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
+                                        <div className={`text-[10px] uppercase font-bold tracking-widest ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+                                            Sandbox Engine: <span className="text-blue-500">HypoPG</span>
+                                        </div>
+                                        <button
+                                            onClick={verifyImpact}
+                                            disabled={verifying}
+                                            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider text-white transition-all transform active:scale-95 disabled:opacity-50 ${verifying ? "bg-slate-600" : "bg-blue-600 hover:bg-blue-500 shadow-lg shadow-blue-500/20"
+                                                }`}
+                                        >
+                                            {verifying ? (
+                                                <>
+                                                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                                    Verifying...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Play className="w-3 h-3 fill-current" />
+                                                    Verify Impact
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
                                 </div>
                             )}
                         </div>
                     )}
 
                     {activeTab === "plan" && (
-                        <div className={`text-center py-12 ${isDark ? "text-slate-500" : "text-slate-400"}`}>
-                            <BarChart3 className="w-12 h-12 mx-auto mb-4 opacity-30" />
-                            <p>Execution plan visualization coming soon</p>
-                            <p className="text-sm mt-1">Run &quot;Analyze Query&quot; to see optimization suggestions</p>
+                        <div className="p-4">
+                            {analysisResult?.original_plan ? (
+                                <div className={`rounded-lg p-4 border overflow-x-auto ${isDark ? "bg-slate-900 border-slate-700" : "bg-white border-slate-200"}`}>
+                                    <h3 className={`text-sm font-semibold mb-4 ${isDark ? "text-slate-300" : "text-slate-600"}`}>Execution Plan</h3>
+                                    <PlanNode node={analysisResult.original_plan} />
+                                </div>
+                            ) : (
+                                <div className={`text-center py-12 ${isDark ? "text-slate-500" : "text-slate-400"}`}>
+                                    <BarChart3 className="w-12 h-12 mx-auto mb-4 opacity-30" />
+                                    {analyzing ? (
+                                        <p>Analyzing query plan...</p>
+                                    ) : (
+                                        <>
+                                            <p>No execution plan available</p>
+                                            <p className="text-sm mt-1">Run "Analyze Query" to generate a plan</p>
+                                        </>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     )}
 

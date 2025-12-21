@@ -4,7 +4,7 @@ Fetches query metrics from pg_stat_statements.
 """
 
 import logging
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from connection_manager import connection_manager
 
 logger = logging.getLogger(__name__)
@@ -431,5 +431,30 @@ class MetricService:
         except Exception as e:
             logger.error(f"Error resetting stats: {e}")
             return False
+
+    async def fetch_single_query(self, queryid: str) -> Optional[Dict[str, Any]]:
+        """
+        Fetch a single query's metrics by queryid.
+        """
+        pool = await connection_manager.get_pool()
+        if not pool:
+            return None
+            
+        try:
+            async with pool.acquire() as conn:
+                # Build version-aware SQL (always include system for direct lookup)
+                select_clause, _, _ = self._build_query_metrics_sql(include_system_queries=True)
+                
+                query = f"""
+                    SELECT {select_clause}
+                    FROM pg_stat_statements
+                    WHERE CAST(queryid AS TEXT) = $1
+                    LIMIT 1
+                """
+                row = await conn.fetchrow(query, queryid)
+                return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Error fetching single query {queryid}: {e}")
+            return None
 
 metric_service = MetricService()

@@ -17,6 +17,72 @@ interface SettingsData {
     privacy_mode: boolean;
 }
 
+interface OllamaModelSelectProps {
+    baseUrl: string;
+    value: string;
+    onChange: (value: string) => void;
+}
+
+function OllamaModelSelect({ baseUrl, value, onChange }: OllamaModelSelectProps) {
+    const { theme } = useAppStore();
+    const isDark = theme === "dark";
+    const [models, setModels] = useState<string[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        const fetchModels = async () => {
+            if (!baseUrl) return;
+            setLoading(true);
+            setError(null);
+            try {
+                // Ensure base URL doesn't have trailing slash for clean appending
+                const cleanBase = baseUrl.replace(/\/$/, "");
+                const res = await fetch(`${cleanBase}/api/tags`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.models && Array.isArray(data.models)) {
+                        setModels(data.models.map((m: any) => m.name));
+                    }
+                }
+            } catch (e) {
+                // Silent fail/log for now as user might be typing URL
+                console.warn("Failed to fetch Ollama models", e);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        const timeout = setTimeout(fetchModels, 500); // Debounce
+        return () => clearTimeout(timeout);
+    }, [baseUrl]);
+
+    return (
+        <div className="relative">
+            <input
+                list="ollama-models"
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
+                placeholder="Select or type model name (e.g., deepseek-r1:14b)"
+                className={`w-full px-3 py-2 rounded-lg border text-sm ${isDark
+                    ? "bg-slate-700 border-slate-600 text-white placeholder:text-slate-500"
+                    : "bg-white border-slate-300 text-slate-800 placeholder:text-slate-400"
+                    } focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none`}
+            />
+            <datalist id="ollama-models">
+                {models.map((model) => (
+                    <option key={model} value={model} />
+                ))}
+            </datalist>
+            {loading && (
+                <div className="absolute right-3 top-2.5">
+                    <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+                </div>
+            )}
+        </div>
+    );
+}
+
 export default function SettingsPage() {
     const { theme, toggleTheme } = useAppStore();
     const isDark = theme === "dark";
@@ -24,7 +90,7 @@ export default function SettingsPage() {
     const [settings, setSettings] = useState<SettingsData>({
         llm_provider: "ollama",
         ollama_base_url: "http://localhost:11434",
-        ollama_model: "sqlcoder",
+        ollama_model: "sqlcoder:7b",
         openai_api_key: "",
         openai_model: "gpt-4o-mini",
         gemini_api_key: "",
@@ -33,6 +99,7 @@ export default function SettingsPage() {
     });
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [testing, setTesting] = useState(false);
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
@@ -51,6 +118,27 @@ export default function SettingsPage() {
             console.error("Failed to fetch settings:", e);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const testConnection = async () => {
+        setTesting(true);
+        try {
+            const res = await fetch(`${apiUrl}/api/settings/llm/test`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(settings),
+            });
+            const data = await res.json();
+            if (data.success) {
+                toast.success(data.message || "Connection successful!");
+            } else {
+                toast.error(data.message || "Connection failed");
+            }
+        } catch (e) {
+            toast.error("Failed to test connection");
+        } finally {
+            setTesting(false);
         }
     };
 
@@ -161,10 +249,10 @@ export default function SettingsPage() {
                                 </div>
                                 <div>
                                     <Label>Model</Label>
-                                    <Input
+                                    <OllamaModelSelect
+                                        baseUrl={settings.ollama_base_url}
                                         value={settings.ollama_model}
                                         onChange={(v) => setSettings({ ...settings, ollama_model: v })}
-                                        placeholder="sqlcoder"
                                     />
                                 </div>
                             </>
@@ -215,6 +303,29 @@ export default function SettingsPage() {
                                 />
                             </div>
                         )}
+
+                        <div className="pt-2">
+                            <button
+                                onClick={testConnection}
+                                disabled={testing}
+                                className={`w-full py-2 rounded-lg text-sm font-medium border flex items-center justify-center gap-2 transition-colors ${isDark
+                                    ? "border-slate-600 text-slate-300 hover:bg-slate-700 hover:border-slate-500"
+                                    : "border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300"
+                                    } disabled:opacity-50`}
+                            >
+                                {testing ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        Testing...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Bot className="w-4 h-4" />
+                                        Test Connection
+                                    </>
+                                )}
+                            </button>
+                        </div>
                     </div>
                 </Section>
 

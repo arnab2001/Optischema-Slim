@@ -42,26 +42,77 @@ class SimulationService:
             logger.error(f"Error checking hypopg: {e}")
             return False
 
-    def _prepare_query_candidates(self, query: str) -> list:
-        """Generate candidate queries with smart parameter substitutions."""
+    async def find_working_candidate(self, conn, query: str) -> Optional[str]:
+        """Try different parameter substitutions until one produces a valid plan."""
+        candidates = self.prepare_query_candidates(query)
+        
+        for candidate in candidates:
+            try:
+                # Test with simple EXPLAIN (no JSON yet, just to see if it parses)
+                await conn.execute(f"EXPLAIN {candidate}")
+                return candidate
+            except Exception:
+                continue
+        
+        # Fallback to NULL if everything fails, or original query
+        return candidates[-1] if candidates else query
+
+    def prepare_query_candidates(self, query: str) -> list:
+        """Generate candidate queries with smart, context-aware parameter substitutions."""
         import re
         
         def smart_replace(q: str, value_for_where: str) -> str:
-            """Replace LIMIT/OFFSET params with integers, other params with given value."""
-            result = re.sub(r'(LIMIT\s+)\$\d+', r'\g<1>10', q, flags=re.IGNORECASE)
+            """Replace parameters with smart defaults based on context."""
+            # 1. Handle interval $N -> '1 day'::interval (Postgres keywords)
+            result = re.sub(r'interval\s+\$\d+', "'1 day'::interval", q, flags=re.IGNORECASE)
+            
+            # 2. Handle LIMIT $N and OFFSET $N specially (need integers)
+            result = re.sub(r'(LIMIT\s+)\$\d+', r'\g<1>10', result, flags=re.IGNORECASE)
             result = re.sub(r'(OFFSET\s+)\$\d+', r'\g<1>0', result, flags=re.IGNORECASE)
+            
+            # 3. Replace remaining $N with the specified value
             result = re.sub(r'\$\d+', value_for_where, result)
             return result
-        
+
+        def mixed_replace(q: str) -> str:
+            """Highly robust substitution for complex scripts."""
+            result = q
+            # 1. Handle interval $N
+            result = re.sub(r'interval\s+\$\d+', "'1 day'::interval", result, flags=re.IGNORECASE)
+            
+            # 2. Handle ::jsonb and ::json
+            result = re.sub(r'\$\d+(::jsonb?)', r"'{}'\g<1>", result, flags=re.IGNORECASE)
+            
+            # 3. Handle LIMIT/OFFSET
+            result = re.sub(r'(LIMIT\s+)\$\d+', r'\g<1>10', result, flags=re.IGNORECASE)
+            result = re.sub(r'(OFFSET\s+)\$\d+', r'\g<1>0', result, flags=re.IGNORECASE)
+            
+            # 4. Handle generate_series
+            result = re.sub(r'(generate_series\s*\(\s*)\$\d+', r'\g<1>1', result, flags=re.IGNORECASE)
+            result = re.sub(r'(generate_series\s*\(\s*[^,)]+,\s*)\$\d+', r'\g<1>10', result, flags=re.IGNORECASE)
+            
+            # 5. Handle arithmetic and list context (heuristically)
+            # Replace $N with 1 if preceded/followed by math operators, brackets, or commas
+            result = re.sub(r'([\*\/\+\-\(\[\,]\s*)\$\d+', r'\g<1>1', result)
+            result = re.sub(r'\$\d+(\s*[\*\/\+\-\)\]\,])', r'1\g<1>', result)
+            
+            # 6. Fallback for remaining $N
+            # Use 1 as a generic fallback because it satisfies text, numeric, and boolean contexts
+            result = re.sub(r'\$\d+', "1", result)
+            return result
+
         candidates = []
-        # UUID candidate (for UUID columns)
-        candidates.append(smart_replace(query, "'00000000-0000-0000-0000-000000000000'::uuid"))
-        # Integer candidate (for INT columns)
+        # Mixed candidate (The strongest for complex scripts)
+        candidates.append(mixed_replace(query))
+        # Integer
         candidates.append(smart_replace(query, "1"))
-        # String candidate (for TEXT columns)
+        # String
         candidates.append(smart_replace(query, "'dummy'"))
-        # NULL fallback
+        # UUID
+        candidates.append(smart_replace(query, "'00000000-0000-0000-0000-000000000000'::uuid"))
+        # NULL
         candidates.append(smart_replace(query, "NULL"))
+        
         return candidates
 
     def _parse_indexes(self, index_sql: str) -> list:
@@ -70,82 +121,11 @@ class SimulationService:
         indexes = [idx.strip() for idx in index_sql.split(';') if idx.strip()]
         return indexes
 
-    async def simulate_index(self, query: str, index_sql: str) -> Dict[str, Any]:
-        """
-        Simulate an index and return the cost reduction.
-        If HypoPG is missing, return a special status to downgrade to Advisory.
-        """
-        pool = await connection_manager.get_pool()
-        if not pool:
-            return {"error": "No database connection"}
-            
-        if not await self.check_hypopg_installed():
-            # Fallback for missing HypoPG
-            return {
-                "verification_status": "advisory",
-                "message": "HypoPG extension not available. Suggestion cannot be verified but may still be valid.",
-                "index_sql": index_sql
-            }
-
-        # Try parameter substitutions to get a valid plan
-        candidates = self._prepare_query_candidates(query)
-        original_cost = 0.0
-        new_cost = 0.0
-
-        async with pool.acquire() as conn:
-            # Find a candidate that works
-            explain_query = None
-            for candidate in candidates:
-                try:
-                    test_result = await conn.fetchval(f"EXPLAIN (FORMAT JSON) {candidate}")
-                    test_plan = json.loads(test_result)[0]['Plan']
-                    if test_plan['Total Cost'] > 0:
-                        explain_query = candidate
-                        break
-                except Exception:
-                    continue
-            
-            if not explain_query:
-                explain_query = candidates[-1]  # Use NULL fallback
-
-            try:
-                # 1. Get original plan cost
-                original_explain = await conn.fetchval(f"EXPLAIN (FORMAT JSON) {explain_query}")
-                original_plan = json.loads(original_explain)[0]['Plan']
-                original_cost = original_plan['Total Cost']
-                
-                # 2. Create hypothetical indexes (handle multiple)
-                indexes = self._parse_indexes(index_sql)
-                for idx in indexes:
-                    try:
-                        await conn.execute(f"SELECT hypopg_create_index($1)", idx)
-                    except Exception as e:
-                        logger.warning(f"Failed to create hypothetical index: {idx} - {e}")
-                
-                # 3. Get new plan cost
-                new_explain = await conn.fetchval(f"EXPLAIN (FORMAT JSON) {explain_query}")
-                new_plan = json.loads(new_explain)[0]['Plan']
-                new_cost = new_plan['Total Cost']
-                
-                # 4. Clean up hypothetical indexes
-                await conn.execute("SELECT hypopg_reset()")
-                
-            except Exception as e:
-                logger.error(f"Simulation failed: {e}")
-                return {"error": str(e)}
-
-        # Calculate improvement
-        improvement = 0.0
-        if original_cost > 0:
-            improvement = ((original_cost - new_cost) / original_cost) * 100
-
-        return {
-            "original_cost": original_cost,
-            "new_cost": new_cost,
-            "improvement_percent": round(improvement, 2),
-            "index_sql": index_sql,
-            "verification_status": "verified"
-        }
+    def _prepare_query(self, query: str) -> str:
+        """Prepare a query for EXPLAIN by substituting parameters."""
+        candidates = self.prepare_query_candidates(query)
+        # For simple simulation, we just use the first candidate (now Mixed)
+        return candidates[0] if candidates else query
 
     async def simulate_rewrite(self, original_sql: str, new_sql: str) -> Dict[str, Any]:
         """
@@ -191,5 +171,82 @@ class SimulationService:
         except Exception as e:
             logger.error(f"Rewrite simulation failed: {e}")
             return {"error": f"Invalid SQL or Execution Error: {str(e)}"}
+
+    async def verify_index_impact(self, original_query: str, index_sql: str) -> Dict[str, Any]:
+        """
+        Interactively verify the impact of an index suggestion using HypoPG.
+        Supports multiple indexes separated by semicolons.
+        """
+        pool = await connection_manager.get_pool()
+        if not pool:
+            return {"error": "No database connection"}
+            
+        if not await self.check_hypopg_installed():
+            return {
+                "error": "HypoPG extension not available.",
+                "can_simulate": False
+            }
+
+        async with pool.acquire() as conn:
+            # 1. Find a working candidate (handles type mismatches like UUID vs Int)
+            explain_query = await self.find_working_candidate(conn, original_query)
+
+            # Run everything in a transaction that auto-rollbacks
+            async with conn.transaction():
+                try:
+                    # 2. Get Original Cost
+                    plan_before_json = await conn.fetchval(f"EXPLAIN (FORMAT JSON) {explain_query}")
+                    plan_before = json.loads(plan_before_json)[0]['Plan']
+                    cost_before = plan_before['Total Cost']
+
+                    # 3. Create Virtual Indexes (handle multiple)
+                    indexes = self._parse_indexes(index_sql)
+                    for idx in indexes:
+                        try:
+                            await conn.execute("SELECT hypopg_create_index($1)", idx)
+                        except Exception as e:
+                            logger.warning(f"Failed to create virtual index in verification: {idx} - {e}")
+
+                    # 4. Get New Cost (The planner now 'sees' the index)
+                    plan_after_json = await conn.fetchval(f"EXPLAIN (FORMAT JSON) {explain_query}")
+                    plan_after = json.loads(plan_after_json)[0]['Plan']
+                    cost_after = plan_after['Total Cost']
+                    
+                    # 6. Check if the index was actually used in the new plan
+                    # We look for "Index Scan" or "Index Only Scan" in the JSON tree
+                    def find_index_usage(node):
+                        node_type = node.get("Node Type", "")
+                        if "Index Scan" in node_type or "Index Only Scan" in node_type:
+                            return True
+                        for child in node.get("Plans", []):
+                            if find_index_usage(child):
+                                return True
+                        return False
+                    
+                    used_index = find_index_usage(plan_after)
+
+                    # 7. Calculate Improvement
+                    improvement = 0
+                    if cost_before > 0:
+                        improvement = ((cost_before - cost_after) / cost_before) * 100
+
+                    # TRANSACTION ROLLS BACK HERE -> Virtual index is gone.
+                    
+                    return {
+                        "can_simulate": True,
+                        "cost_before": cost_before,
+                        "cost_after": cost_after,
+                        "improvement_percent": round(improvement, 2),
+                        "index_used": used_index,
+                        "verification_status": "verified"
+                    }
+
+                except Exception as e:
+                    # Capture syntax errors in AI suggestion or planner issues
+                    logger.error(f"Verification simulation failed: {e}")
+                    return {
+                        "error": f"Simulation failed: {str(e)}",
+                        "can_simulate": False
+                    }
 
 simulation_service = SimulationService()

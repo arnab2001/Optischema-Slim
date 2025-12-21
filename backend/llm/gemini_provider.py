@@ -29,7 +29,15 @@ class GeminiProvider(LLMProvider):
             except Exception as e:
                 logger.error(f"Failed to initialize Gemini client: {e}")
 
-    async def generate(self, prompt: str) -> str:
+    @property
+    def name(self) -> str:
+        return "gemini"
+
+    @property
+    def model_name(self) -> str:
+        return self.model
+
+    async def generate(self, prompt: str, max_tokens: int = 512) -> str:
         """
         Generate raw text response from Gemini.
         """
@@ -43,7 +51,8 @@ class GeminiProvider(LLMProvider):
                 None,
                 lambda: self.client.models.generate_content(
                     model=self.model,
-                    contents=prompt
+                    contents=prompt,
+                    config={"max_output_tokens": max_tokens}
                 )
             )
             return response.text

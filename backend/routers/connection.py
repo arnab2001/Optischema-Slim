@@ -227,49 +227,59 @@ async def delete_saved_connection_endpoint(connection_id: int):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to delete connection: {str(e)}")
 
-@router.get("/extension/check")
-async def check_extension():
+@router.get("/extension/status")
+async def get_extensions_status():
     """
-    Check if pg_stat_statements is enabled.
+    Get status of all relevant Postgres extensions.
     """
     from services.extension_service import extension_service
-    enabled = await extension_service.check_pg_stat_statements()
+    status = await extension_service.get_extensions_status()
+    return {"extensions": status}
+
+@router.post("/extension/enable/{name}")
+async def enable_extension(name: str):
+    """
+    Enable a specific extension.
+    """
+    from services.extension_service import extension_service
+    result = await extension_service.enable_extension(name)
+    if result["success"]:
+        return result
+    else:
+        raise HTTPException(status_code=400, detail=result["message"])
+
+@router.get("/extension/check")
+async def legacy_check_extension():
+    """Legacy endpoint for backward compatibility."""
+    from services.extension_service import extension_service
+    status = await extension_service.get_extensions_status()
+    enabled = any(e['name'] == 'pg_stat_statements' and e['enabled'] for e in status)
     return {"enabled": enabled}
 
 @router.post("/extension/enable")
-async def enable_extension():
-    """
-    Enable pg_stat_statements extension.
-    """
+async def legacy_enable_extension():
+    """Legacy endpoint for backward compatibility."""
     from services.extension_service import extension_service
-    success = await extension_service.enable_pg_stat_statements()
-    if success:
+    result = await extension_service.enable_extension("pg_stat_statements")
+    if result["success"]:
         return {"success": True, "message": "Extension enabled successfully"}
     else:
-        raise HTTPException(status_code=400, detail="Failed to enable extension")
+        raise HTTPException(status_code=400, detail=result["message"])
 
 @router.get("/extension/hypopg/check")
-async def check_hypopg():
-    """
-    Check if HypoPG extension is enabled.
-    """
-    from services.simulation_service import simulation_service
-    enabled = await simulation_service.check_hypopg_installed()
+async def legacy_check_hypopg():
+    """Legacy endpoint for backward compatibility."""
+    from services.extension_service import extension_service
+    status = await extension_service.get_extensions_status()
+    enabled = any(e['name'] == 'hypopg' and e['enabled'] for e in status)
     return {"enabled": enabled, "extension": "hypopg"}
 
 @router.post("/extension/hypopg/enable")
-async def enable_hypopg():
-    """
-    Enable HypoPG extension for hypothetical index simulation.
-    """
-    from connection_manager import connection_manager
-    pool = await connection_manager.get_pool()
-    if not pool:
-        raise HTTPException(status_code=400, detail="No database connection")
-    
-    try:
-        async with pool.acquire() as conn:
-            await conn.execute("CREATE EXTENSION IF NOT EXISTS hypopg")
+async def legacy_enable_hypopg():
+    """Legacy endpoint for backward compatibility."""
+    from services.extension_service import extension_service
+    result = await extension_service.enable_extension("hypopg")
+    if result["success"]:
         return {"success": True, "message": "HypoPG extension enabled successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to enable HypoPG: {str(e)}")
+    else:
+        raise HTTPException(status_code=400, detail=result["message"])
