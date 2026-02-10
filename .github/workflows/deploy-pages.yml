@@ -45,9 +45,11 @@ jobs:
       - name: Promote landing page to root
         run: |
           cd frontend/dist
-          if [ -f "landing.html" ]; then
-            cp landing.html index.html
+          if [ ! -f "landing.html" ]; then
+            echo "landing.html missing from Vite build output"
+            exit 1
           fi
+          cp landing.html index.html
           cp index.html 404.html
 
       - name: Setup Pages
