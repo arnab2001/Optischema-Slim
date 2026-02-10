@@ -1,14 +1,12 @@
-"use client";
-
 import { useConnectionStore } from "@/store/connectionStore";
 import { ConnectionWizard } from "@/components/connection-wizard";
 import { ExtensionCheck } from "@/components/extension-check";
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "react-router-dom";
 
 export default function Home() {
   const { isConnected, connectionString, disconnect } = useConnectionStore();
-  const router = useRouter();
+  const navigate = useNavigate();
   const [step, setStep] = useState<"connect" | "check">("connect");
 
   // If already connected with a saved connection string, skip to extension check
@@ -25,7 +23,7 @@ export default function Home() {
   };
 
   const handleCheckComplete = () => {
-    router.push("/dashboard");
+    navigate("/dashboard");
   };
 
   return (

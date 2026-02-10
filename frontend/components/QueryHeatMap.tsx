@@ -1,5 +1,6 @@
 'use client'
 
+import type * as React from "react";
 import { useState, useEffect } from 'react'
 import { ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from 'recharts'
 import { AlertTriangle, TrendingUp, TrendingDown, BarChart3 } from 'lucide-react'

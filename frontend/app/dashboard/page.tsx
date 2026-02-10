@@ -8,7 +8,6 @@ import { QueryGrid } from "@/components/dashboard/query-grid";
 import { InspectorSheet } from "@/components/inspector/inspector-sheet";
 import { useAppStore } from "@/store/appStore";
 import { QueryMetric } from "@/lib/dashboard-math";
-import Link from "next/link";
 import { ArrowUpRight, Search, X, ChevronDown, ChevronUp } from "lucide-react";
 import { ChartsRow } from "@/components/dashboard/charts-row";
 
@@ -35,7 +34,7 @@ export default function DashboardPage() {
     return false;
   });
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
+  const apiUrl = import.meta.env.VITE_API_URL || "";
 
   const fetchData = async () => {
     if (!isConnected) return;

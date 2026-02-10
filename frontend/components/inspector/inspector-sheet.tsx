@@ -40,7 +40,7 @@ export function InspectorSheet({ query, isOpen, onClose }: InspectorSheetProps) 
     const [verifying, setVerifying] = useState(false);
     const [verificationResult, setVerificationResult] = useState<any>(null);
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
+    const apiUrl = import.meta.env.VITE_API_URL || "";
 
     // Reset state when query changes
     useEffect(() => {

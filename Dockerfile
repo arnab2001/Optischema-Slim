@@ -1,4 +1,4 @@
-# --- Stage 1: Build Frontend (Static Export) ---
+# --- Stage 1: Build Frontend (Vite) ---
 FROM node:18-alpine AS frontend-builder
 WORKDIR /app
 
@@ -10,7 +10,7 @@ RUN apk add --no-cache libc6-compat python3 make g++
 
 # Copy package files
 COPY frontend/package*.json ./
-RUN npm ci
+RUN npm install
 
 # Copy frontend source
 COPY frontend/ ./
@@ -18,12 +18,11 @@ COPY frontend/ ./
 # EXCLUDE LANDING PAGE from build to reduce size and focus on the tool
 RUN rm -rf app/landing
 
-# Set environment for static export
+# Set environment for static build
 # Empty string means relative paths will be used for API calls
-ENV NEXT_PUBLIC_API_URL=""
-ENV NEXT_TELEMETRY_DISABLED 1
+ENV VITE_API_URL=""
 
-# Build static export (generates 'out' directory)
+# Build static assets (generates 'dist' directory)
 RUN npm run build
 
 # --- Stage 2: Build Backend (Python Virtual Env) ---
@@ -65,7 +64,7 @@ COPY backend/ .
 
 # Copy static frontend files to 'static' directory
 # FastAPI serves these via StaticFiles
-COPY --from=frontend-builder /app/out ./static
+COPY --from=frontend-builder /app/dist ./static
 
 # Ensure data directory exists for SQLite persistence
 RUN mkdir -p /app/data

@@ -1,5 +1,6 @@
 "use client";
 
+import type * as React from "react";
 import { AppShell } from "@/components/layout/app-shell";
 import { useAppStore } from "@/store/appStore";
 import { Settings as SettingsIcon, Bot, Palette, Shield, Check, Loader2 } from "lucide-react";
@@ -104,7 +105,7 @@ export default function SettingsPage() {
     const [loading, setLoading] = useState(true);
     const [testing, setTesting] = useState(false);
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
+    const apiUrl = import.meta.env.VITE_API_URL || "";
 
     useEffect(() => {
         fetchSettings();

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useAppStore } from "@/store/appStore";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "react-router-dom";
 import {
     Activity,
     RefreshCw,
@@ -100,7 +100,7 @@ interface ScanResult {
 
 export function HealthDoctor() {
     const { theme, setSelectedQueryId } = useAppStore();
-    const router = useRouter();
+    const navigate = useNavigate();
     const isDark = theme === "dark";
 
     const [scanLimit, setScanLimit] = useState(50);
@@ -115,7 +115,7 @@ export function HealthDoctor() {
     const [history, setHistory] = useState<ScanResult[]>([]);
     const [loadingHistory, setLoadingHistory] = useState(false);
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
+    const apiUrl = import.meta.env.VITE_API_URL || "";
 
     const fetchLatest = async () => {
         try {
@@ -179,7 +179,7 @@ export function HealthDoctor() {
     const handleIssueAction = (issue: Issue) => {
         if (issue.type === "QUERY") {
             setSelectedQueryId(issue.action_payload);
-            router.push("/dashboard"); // Navigate to Monitor view
+            navigate("/dashboard"); // Navigate to Monitor view
         } else if (issue.type === "SCHEMA" || issue.type === "CONFIG") {
             setShowSqlModal(issue.action_payload);
         }

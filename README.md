@@ -46,7 +46,17 @@ git clone https://github.com/arnab2001/Optischema-Slim.git
 docker-compose up -d
 
 # 3. Open Dashboard
-# http://localhost:3000
+# http://localhost:8080
+```
+
+## Dev Setup (Separate FE/BE)
+
+```bash
+# Run backend + Vite dev server in separate containers
+docker-compose -f docker-compose.dev.yml up --build
+
+# Frontend (Vite) -> http://localhost:5173
+# Backend (FastAPI) -> http://localhost:8080
 ```
 
 ## Features
@@ -59,7 +69,7 @@ docker-compose up -d
 
 The system follows a **Collect → Analyze → Simulate** pipeline designed for distinct safety and performance guarantees:
 
-*   **Frontend**: **Next.js 15** (App Router) with Shadcn UI & Recharts for real-time visualization.
+*   **Frontend**: **Vite + React** with Tailwind UI & Recharts for real-time visualization.
 *   **Backend**: **FastAPI** paired with AsyncPG for high-conformance, non-blocking I/O.
 *   **Core Engine**:
     *   **Metric Collection**: Ingests `pg_stat_statements` to fingerprint and rank queries by Total Time and IO.

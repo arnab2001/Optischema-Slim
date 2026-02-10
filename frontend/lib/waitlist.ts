@@ -17,7 +17,7 @@ export interface WaitlistError {
 }
 
 export async function joinWaitlist(email: string): Promise<WaitlistResponse> {
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
   
   const response = await fetch(WAITLIST_ENDPOINT, {
     method: 'POST',

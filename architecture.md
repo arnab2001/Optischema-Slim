@@ -2,7 +2,7 @@
 ## 3. Tech Stack
 
 ### Frontend Framework
-- **Next.js 15.4.1** with React 19.1.0 and TypeScript 4.9.5
+- **Vite + React 19.1.0** with TypeScript
 - **UI Components**: Radix UI primitives (@radix-ui/react-dialog, @radix-ui/react-toast)
 - **Styling**: Tailwind CSS 3.3.3 with custom design system
 - **Charts & Visualization**: Recharts 3.1.0 for performance metrics
@@ -79,8 +79,8 @@
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   Frontend      │    │   Backend       │    │   AI Services   │
-│   (Next.js)     │◄──►│   (FastAPI)     │◄──►│   (Multi-LLM)   │
-│   Port: 3000    │    │   Port: 8080    │    │   (External)    │
+│ (Vite/React)    │◄──►│   (FastAPI)     │◄──►│   (Multi-LLM)   │
+│ Dev: 5173       │    │   Port: 8080    │    │   (External)    │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
          │                       │                       │
          │              ┌────────▼────────┐              │
@@ -106,7 +106,7 @@
 
 #### 1. Real-Time Query Monitoring Flow
 ```
-User Dashboard → Next.js Frontend → API Gateway (Next.js rewrites) → FastAPI Backend → PostgreSQL (pg_stat_statements) → WebSocket → Real-time UI Updates
+User Dashboard → Vite/React Frontend → FastAPI Backend → PostgreSQL (pg_stat_statements) → WebSocket → Real-time UI Updates
 ```
 
 #### 2. AI-Powered Analysis Flow
@@ -126,9 +126,9 @@ User Approval → Apply Manager → Production Database → Audit Logging → Ro
 
 ### Detailed Component Interactions
 
-#### Frontend Layer (Next.js)
+#### Frontend Layer (Vite + React)
 - **Dashboard Components**: Real-time metrics display with WebSocket integration
-- **API Routes**: Next.js API routes that proxy requests to FastAPI backend
+- **API Calls**: Direct REST calls to FastAPI (same-origin in production, dev proxy in development)
 - **State Management**: SWR for data fetching with automatic revalidation
 - **WebSocket Client**: Real-time updates for live metrics and recommendations
 
@@ -154,7 +154,7 @@ User Approval → Apply Manager → Production Database → Audit Logging → Ro
 ### Service Communication Patterns
 
 #### 1. Synchronous Communication
-- **Frontend ↔ Backend**: REST API calls via Next.js rewrites
+- **Frontend ↔ Backend**: REST API calls via same-origin (prod) or Vite proxy (dev)
 - **Backend ↔ Database**: AsyncPG connection pool
 - **Backend ↔ AI APIs**: HTTPX async client with retry logic
 

@@ -1,5 +1,6 @@
 "use client";
 
+import type * as React from "react";
 import { useState, useEffect } from "react";
 import { useConnectionStore } from "@/store/connectionStore";
 import { Database, Shield, ShieldAlert, Loader2, AlertCircle, Star, Check } from "lucide-react";
@@ -97,7 +98,7 @@ export function ConnectionWizard({ onConnect }: ConnectionWizardProps) {
     finalConnectionString = normalizeConnectionString(finalConnectionString);
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
+      const apiUrl = import.meta.env.VITE_API_URL || "";
       const res = await fetch(`${apiUrl}/api/connection/connect`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -154,7 +155,7 @@ export function ConnectionWizard({ onConnect }: ConnectionWizardProps) {
             }
           }
 
-          const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
+          const apiUrl = import.meta.env.VITE_API_URL || "";
           const saveRes = await fetch(`${apiUrl}/api/connection/save`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },

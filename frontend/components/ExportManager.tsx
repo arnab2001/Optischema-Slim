@@ -1,5 +1,6 @@
 'use client'
 
+import type * as React from "react";
 import { useState } from 'react'
 import { Download, FileText, FileCode, AlertCircle, CheckCircle, Loader2 } from 'lucide-react'
 import jsPDF from 'jspdf'

@@ -30,7 +30,7 @@ export function ExtensionCheck({ onComplete, onBack }: ExtensionCheckProps) {
     const [enabling, setEnabling] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
+    const apiUrl = import.meta.env.VITE_API_URL || "";
 
     const checkExtensions = async () => {
         setChecking(true);

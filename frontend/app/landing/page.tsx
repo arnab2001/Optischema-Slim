@@ -1,7 +1,7 @@
+import type * as React from "react";
 
 'use client'
 
-import Link from 'next/link'
 import { ArrowRight, CheckCircle2, ChevronRight, Terminal, Zap, Shield, Activity, Cpu, Mail, Star, Github, ArrowUpRight, Check, X, AlertCircle, Database } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 
@@ -449,7 +449,7 @@ function WaitlistSection() {
     setMessage('')
 
     try {
-      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_WrIS4GLRZwLP8LJZi8TjfQ_cCPvoYZQ'
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_WrIS4GLRZwLP8LJZi8TjfQ_cCPvoYZQ'
       const response = await fetch('https://lnvkeysarmzdprtmufwt.supabase.co/functions/v1/waitlist', {
         method: 'POST',
         headers: {

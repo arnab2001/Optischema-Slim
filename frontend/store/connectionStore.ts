@@ -30,7 +30,7 @@ export const useConnectionStore = create<ConnectionState>()(
 
             syncStatus: async () => {
                 try {
-                    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
+                    const apiUrl = import.meta.env.VITE_API_URL || "";
                     const res = await fetch(`${apiUrl}/api/connection/status`);
                     if (res.ok) {
                         const data = await res.json();

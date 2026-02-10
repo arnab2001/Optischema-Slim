@@ -1,0 +1,44 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    container_name: optischema-backend-dev
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
+      - ENVIRONMENT=development
+      - DEBUG=true
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./backend:/app
+      - optischema_dev_data:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: uvicorn main:app --host 0.0.0.0 --port 8080 --reload
+
+  frontend:
+    image: node:18-alpine
+    container_name: optischema-frontend-dev
+    working_dir: /app/frontend
+    environment:
+      - VITE_API_URL=
+      - VITE_WS_URL=ws://localhost:8080/ws
+      - VITE_PROXY_TARGET=http://backend:8080
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app/frontend
+      - frontend_node_modules:/app/frontend/node_modules
+    depends_on:
+      - backend
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+
+volumes:
+  optischema_dev_data:
+    driver: local
+  frontend_node_modules:
+    driver: local

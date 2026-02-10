@@ -1,4 +1,4 @@
-name: Deploy GitHub Pages
+name: Deploy GitHub Pages (Landing)
 
 on:
   push:
@@ -21,43 +21,42 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'npm'
+          node-version: "18"
+          cache: "npm"
           cache-dependency-path: frontend/package-lock.json
-      
+
       - name: Install dependencies
         run: |
           cd frontend
-          npm ci
-      
-      - name: Build landing page
+          npm install
+
+      - name: Build landing page (Vite)
         env:
-          EXPORT_MODE: "true"
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          VITE_BASE: "/Optischema-Slim/"
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
           cd frontend
           npm run build
-      
-      - name: Copy landing page to root
+
+      - name: Promote landing page to root
         run: |
-          cd frontend/out
-          # Copy landing page to root (so /landing becomes /)
-          cp -r landing/* .
-          # Create 404.html for SPA routing
+          cd frontend/dist
+          if [ -f "landing/index.html" ]; then
+            cp landing/index.html index.html
+          fi
           cp index.html 404.html
-      
+
       - name: Setup Pages
         uses: actions/configure-pages@v4
-      
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: frontend/out
+          path: frontend/dist
 
   deploy:
     environment:

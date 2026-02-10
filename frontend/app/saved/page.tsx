@@ -20,7 +20,7 @@ export default function SavedPage() {
     const [saved, setSaved] = useState<SavedOptimization[]>([]);
     const [loading, setLoading] = useState(true);
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
+    const apiUrl = import.meta.env.VITE_API_URL || "";
 
     useEffect(() => {
         fetchSaved();

@@ -1,5 +1,6 @@
 "use client";
 
+import type * as React from "react";
 import { useState, useEffect } from "react";
 import { useAppStore } from "@/store/appStore";
 import { Settings, Shield, Activity, HardDrive, Search, Save, Loader2, Info } from "lucide-react";
@@ -26,7 +27,7 @@ export function ThresholdSettings() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
+    const apiUrl = import.meta.env.VITE_API_URL || "";
 
     useEffect(() => {
         fetchThresholds();

@@ -16,8 +16,7 @@ import {
     Star,
     RefreshCw
 } from "lucide-react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { Link, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
 
 interface SavedConnection {
@@ -40,7 +39,7 @@ const navItems = [
 export function Sidebar() {
     const { isSidebarCollapsed, toggleSidebar, theme } = useAppStore();
     const { isConnected, connectionString, syncStatus } = useConnectionStore();
-    const pathname = usePathname();
+    const { pathname } = useLocation();
     const [connectionDropdownOpen, setConnectionDropdownOpen] = useState(false);
     const [savedConnections, setSavedConnections] = useState<SavedConnection[]>([]);
     const [activeConnectionId, setActiveConnectionId] = useState<number | null>(null);
@@ -51,7 +50,7 @@ export function Sidebar() {
 
     // Fetch saved connections and current status
     const fetchConnections = async () => {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
+        const apiUrl = import.meta.env.VITE_API_URL || "";
         try {
             // Sync with global store
             await syncStatus();
@@ -102,7 +101,7 @@ export function Sidebar() {
         if (switching || connectionId === activeConnectionId) return;
 
         setSwitching(true);
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
+        const apiUrl = import.meta.env.VITE_API_URL || "";
         try {
             const response = await fetch(`${apiUrl}/api/connection/switch/${connectionId}`, {
                 method: 'POST'
@@ -241,7 +240,7 @@ export function Sidebar() {
 
                             {/* Add New Connection */}
                             <Link
-                                href="/"
+                                to="/"
                                 className={`flex items-center gap-2 px-3 py-2.5 text-sm ${isDark ? "text-slate-300 hover:bg-slate-600" : "text-slate-600 hover:bg-slate-50"
                                     }`}
                                 onClick={() => setConnectionDropdownOpen(false)}
@@ -262,7 +261,7 @@ export function Sidebar() {
                         return (
                             <Link
                                 key={item.href}
-                                href={item.href}
+                                to={item.href}
                                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${isActive
                                     ? isDark
                                         ? "bg-blue-600 text-white"

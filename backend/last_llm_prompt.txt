@@ -14,7 +14,7 @@ Focus on safety and high-impact changes only.
 6. ACTIONS: If you suggest a fix, set category to "INDEX" or "REWRITE". Use "ADVISORY" only as a last resort.
 
 === CONTEXT ===
-TARGET QUERY: SELECT "UserSessionHistoryEntity"."id" AS "UserSessionHistoryEntity_id", "UserSessionHistoryEntity"."user_id" AS "UserSessionHistoryEntity_user_id", "UserSessionHistoryEntity"."session_id" AS "UserSessionHistoryEntity_session_id", "UserSessionHistoryEntity"."start_time" AS "UserSessionHistoryEntity_start_time", "UserSessionHistoryEntity"."end_time" AS "UserSessionHistoryEntity_end_time", "UserSessionHistoryEntity"."created_at" AS "UserSessionHistoryEntity_created_at", "UserSessionHistoryEntity"."updated_at" AS "UserSessionHistoryEntity_updated_at", "UserSessionHistoryEntity"."app_id" AS "UserSessionHistoryEntity_app_id" FROM "usm-auth"."user_session_history" "UserSessionHistoryEntity" WHERE (("UserSessionHistoryEntity"."user_id" = $1))
+TARGET QUERY: SELECT "UserSessionHistoryEntity"."id" AS "UserSessionHistoryEntity_id", "UserSessionHistoryEntity"."user_id" AS "UserSessionHistoryEntity_user_id", "UserSessionHistoryEntity"."session_id" AS "UserSessionHistoryEntity_session_id", "UserSessionHistoryEntity"."start_time" AS "UserSessionHistoryEntity_start_time", "UserSessionHistoryEntity"."end_time" AS "UserSessionHistoryEntity_end_time", "UserSessionHistoryEntity"."created_at" AS "UserSessionHistoryEntity_created_at", "UserSessionHistoryEntity"."updated_at" AS "UserSessionHistoryEntity_updated_at" FROM "usm-auth"."user_session_history" "UserSessionHistoryEntity" WHERE (("UserSessionHistoryEntity"."user_id" = $1))
 
 === DATABASE STATS ===
 Table: usm-auth.user_session_history AS UserSessionHistoryEntity (0 rows)
@@ -23,32 +23,18 @@ Indexes:
 
 
 === EXECUTION PLAN ===
-Total Cost: 38.39
+Total Cost: 3852.91
 Plan Details: {
-  "Node Type": "Bitmap Heap Scan",
+  "Node Type": "Seq Scan",
   "Parallel Aware": false,
   "Async Capable": false,
   "Relation Name": "user_session_history",
   "Alias": "UserSessionHistoryEntity",
-  "Startup Cost": 4.11,
-  "Total Cost": 38.39,
-  "Plan Rows": 9,
-  "Plan Width": 104,
-  "Recheck Cond": "(user_id = '00000000-0000-0000-0000-000000000000'::uuid)",
-  "Plans": [
-    {
-      "Node Type": "Bitmap Index Scan",
-      "Parent Relationship": "Outer",
-      "Parallel Aware": false,
-      "Async Capable": false,
-      "Index Name": "<14498>btree_usm-auth_user_session_history_user_id",
-      "Startup Cost": 0.0,
-      "Total Cost": 4.11,
-      "Plan Rows": 9,
-      "Plan Width": 0,
-      "Index Cond": "(user_id = '00000000-0000-0000-0000-000000000000'::uuid)"
-    }
-  ]
+  "Startup Cost": 0.0,
+  "Total Cost": 3852.91,
+  "Plan Rows": 10,
+  "Plan Width": 101,
+  "Filter": "(user_id = '00000000-0000-0000-0000-000000000000'::uuid)"
 }
 
 INSTRUCTIONS:

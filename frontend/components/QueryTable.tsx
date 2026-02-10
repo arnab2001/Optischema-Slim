@@ -1,3 +1,4 @@
+import type * as React from "react";
 import { useState, useEffect, useCallback } from 'react'
 import { Copy, ChevronRight, ChevronUp, ChevronDown, AlertTriangle, Filter, Loader2 } from 'lucide-react'
 import { Tooltip } from 'react-tooltip'

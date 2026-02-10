@@ -93,7 +93,7 @@ static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_dir):
     app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
 
-    # Catch-all route for SPA (Next.js) routing
+    # Catch-all route for SPA routing
     # This ensures that refreshing on /dashboard or other routes serves index.html
     @app.exception_handler(404)
     async def spa_fallback(request, exc):

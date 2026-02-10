@@ -1,5 +1,6 @@
 "use client";
 
+import type * as React from "react";
 import { useState, useEffect } from "react";
 import { useConnectionStore } from "@/store/connectionStore";
 import { AlertCircle, CheckCircle2, Database, Loader2 } from "lucide-react";
@@ -18,7 +19,7 @@ export function ConnectionManager() {
     } = useConnectionStore();
 
     const [inputString, setInputString] = useState("");
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
+    const apiUrl = import.meta.env.VITE_API_URL || "";
 
     const normalizeConnectionString = (raw: string) => {
         const trimmed = raw.trim();

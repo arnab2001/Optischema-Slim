@@ -40,7 +40,7 @@ export function DbInfoPanel() {
     const fetchDbInfo = async () => {
         setLoading(true);
         try {
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
+            const apiUrl = import.meta.env.VITE_API_URL || "";
             const res = await fetch(`${apiUrl}/api/metrics/db-info`);
             const data = await res.json();
             setInfo(data);
