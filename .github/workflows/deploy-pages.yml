@@ -45,8 +45,8 @@ jobs:
       - name: Promote landing page to root
         run: |
           cd frontend/dist
-          if [ -f "landing/index.html" ]; then
-            cp landing/index.html index.html
+          if [ -f "landing.html" ]; then
+            cp landing.html index.html
           fi
           cp index.html 404.html
 
