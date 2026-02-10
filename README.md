@@ -1,7 +1,7 @@
 <div align="center">
   <img src="frontend/public/image.png" alt="OptiSchema Logo" height="120">
   <p><strong>The Local-First Doctor for your PostgreSQL.</strong></p>
-
+<br/> <a href="https://www.producthunt.com/products/optischema-slim?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-optischema-slim" target="_blank" rel="noopener noreferrer"><img alt="OptiSchema Slim - Local-first AI PostgreSQL tuning with ‘what-if’ indexes | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1077195&amp;theme=neutral&amp;t=1770744233923"></a><br/>
   <a href="https://github.com/arnab2001/Optischema-Slim/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License">
   </a>
@@ -21,6 +21,7 @@
     <img src="https://img.shields.io/badge/Status-Private_Alpha-red" alt="Status">
   </a>
 </div>
+
 
 <!-- <img src="docs/screenshot.png" alt="OptiSchema Dashboard" width="100%" style="border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.2);"> -->
 
