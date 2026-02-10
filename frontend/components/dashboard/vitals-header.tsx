@@ -37,21 +37,21 @@ export function VitalsHeader({ vitals, loading }: VitalsHeaderProps) {
 
     const getColorForMetric = (metric: MetricStatus | undefined, type: "qps" | "cache" | "connections"): string => {
         if (!metric || metric.status !== "ok") return "slate";
-        
+
         if (type === "cache") {
             const value = metric.value ?? 0;
             if (value >= 99) return "green";
             if (value >= 90) return "yellow";
             return "red";
         }
-        
+
         if (type === "connections") {
             const active = vitals?.active_connections?.value ?? 0;
             const max = vitals?.max_connections?.value ?? 100;
             if (max > 0 && (active / max) < 0.8) return "green";
             return "yellow";
         }
-        
+
         return "blue"; // QPS
     };
 
@@ -124,15 +124,15 @@ export function VitalsHeader({ vitals, loading }: VitalsHeaderProps) {
                 const colors = getColorClasses(card.color);
                 const Icon = card.icon;
                 const isConnectionCard = card.label === "Active Connections";
-                const connectionPercent = vitals && vitals.max_connections > 0
-                    ? (vitals.active_connections / vitals.max_connections) * 100
-                    : 0;
+                const activeVal = vitals?.active_connections?.value ?? 0;
+                const maxVal = vitals?.max_connections?.value ?? 1;
+                const connectionPercent = (activeVal / maxVal) * 100;
 
                 return (
                     <div
                         key={i}
-                        className={`rounded-xl border p-5 transition-all ${isDark
-                            ? "bg-slate-800 border-slate-700"
+                        className={`rounded-xl border p-4 transition-all ${isDark
+                            ? "bg-slate-800/50 border-slate-700/50"
                             : "bg-white border-slate-200"
                             }`}
                     >
@@ -158,7 +158,7 @@ export function VitalsHeader({ vitals, loading }: VitalsHeaderProps) {
                                 {loading ? (
                                     <div className={`h-8 w-24 rounded ${isDark ? "bg-slate-700" : "bg-slate-200"} animate-pulse`} />
                                 ) : (
-                                    <p className={`text-2xl font-bold ${colors.text}`}>
+                                    <p className={`text-2xl font-mono font-bold tabular-nums ${colors.text}`}>
                                         {card.value}
                                     </p>
                                 )}

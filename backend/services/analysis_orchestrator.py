@@ -86,37 +86,17 @@ class AnalysisOrchestrator:
         if not pool:
             return {"error": "No database connection"}
         
-        # Try parameter substitutions to get a valid plan
-        candidates = simulation_service.prepare_query_candidates(query)
-        current_plan = None
-        current_cost = 0.0
-        last_error = None
-
         async with pool.acquire() as conn:
-            for explain_query in candidates:
-                try:
-                    plan_json = await conn.fetchval(f"EXPLAIN (FORMAT JSON) {explain_query}")
-                    import json
-                    plan_data = json.loads(plan_json)[0]['Plan']
-                    cost = plan_data['Total Cost']
-                    
-                    # If we got a non-zero cost, this is a good plan
-                    if cost > 0:
-                        current_plan = plan_data
-                        current_cost = cost
-                        break
-                    
-                    # If cost is 0, keep it as fallback but try next candidate
-                    if current_plan is None:
-                        current_plan = plan_data
-                        current_cost = cost
-                        
-                except Exception as e:
-                    last_error = e
-                    continue
+            # 1.5 Find a working candidate (handles parameter substitution)
+            explain_query = await simulation_service.find_working_candidate(conn, query)
             
-            if current_plan is None:
-                return {"error": f"Failed to get execution plan: {last_error}"}
+            try:
+                plan_json = await conn.fetchval(f"EXPLAIN (FORMAT JSON) {explain_query}")
+                import json
+                current_plan = json.loads(plan_json)[0]['Plan']
+                current_cost = current_plan['Total Cost']
+            except Exception as e:
+                return {"error": f"Failed to get execution plan: {str(e)}"}
 
         # 2. ASK AI
         suggestion = await llm_service.analyze_query(query, schema_context, current_plan)

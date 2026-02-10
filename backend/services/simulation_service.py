@@ -43,13 +43,13 @@ class SimulationService:
             return False
 
     async def find_working_candidate(self, conn, query: str) -> Optional[str]:
-        """Try different parameter substitutions until one produces a valid plan."""
+        """Try different parameter substitutions until one produces a valid JSON plan."""
         candidates = self.prepare_query_candidates(query)
         
         for candidate in candidates:
             try:
-                # Test with simple EXPLAIN (no JSON yet, just to see if it parses)
-                await conn.execute(f"EXPLAIN {candidate}")
+                # Test with EXPLAIN (FORMAT JSON) to ensure it works for all simulations
+                await conn.execute(f"EXPLAIN (FORMAT JSON) {candidate}")
                 return candidate
             except Exception:
                 continue
@@ -172,7 +172,7 @@ class SimulationService:
             logger.error(f"Rewrite simulation failed: {e}")
             return {"error": f"Invalid SQL or Execution Error: {str(e)}"}
 
-    async def verify_index_impact(self, original_query: str, index_sql: str) -> Dict[str, Any]:
+    async def simulate_index(self, original_query: str, index_sql: str) -> Dict[str, Any]:
         """
         Interactively verify the impact of an index suggestion using HypoPG.
         Supports multiple indexes separated by semicolons.
@@ -236,6 +236,8 @@ class SimulationService:
                         "can_simulate": True,
                         "cost_before": cost_before,
                         "cost_after": cost_after,
+                        "original_cost": cost_before,  # Alias for frontend consistency
+                        "new_cost": cost_after,       # Alias for frontend consistency
                         "improvement_percent": round(improvement, 2),
                         "index_used": used_index,
                         "verification_status": "verified"

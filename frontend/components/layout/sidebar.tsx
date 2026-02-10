@@ -39,7 +39,7 @@ const navItems = [
 
 export function Sidebar() {
     const { isSidebarCollapsed, toggleSidebar, theme } = useAppStore();
-    const { isConnected, connectionString } = useConnectionStore();
+    const { isConnected, connectionString, syncStatus } = useConnectionStore();
     const pathname = usePathname();
     const [connectionDropdownOpen, setConnectionDropdownOpen] = useState(false);
     const [savedConnections, setSavedConnections] = useState<SavedConnection[]>([]);
@@ -51,18 +51,18 @@ export function Sidebar() {
 
     // Fetch saved connections and current status
     const fetchConnections = async () => {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
         try {
-            const [savedRes, statusRes] = await Promise.all([
-                fetch(`${apiUrl}/api/connection/saved`),
-                fetch(`${apiUrl}/api/connection/status`)
-            ]);
+            // Sync with global store
+            await syncStatus();
 
+            const savedRes = await fetch(`${apiUrl}/api/connection/saved`);
             if (savedRes.ok) {
                 const data = await savedRes.json();
                 setSavedConnections(data.connections || []);
             }
 
+            const statusRes = await fetch(`${apiUrl}/api/connection/status`);
             if (statusRes.ok) {
                 const status = await statusRes.json();
                 setActiveConnectionId(status.saved_connection_id);
@@ -102,7 +102,7 @@ export function Sidebar() {
         if (switching || connectionId === activeConnectionId) return;
 
         setSwitching(true);
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
         try {
             const response = await fetch(`${apiUrl}/api/connection/switch/${connectionId}`, {
                 method: 'POST'

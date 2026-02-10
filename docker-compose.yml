@@ -1,68 +1,32 @@
 services:
-  # FastAPI Backend
-  optischema-api:
+  # All-In-One OptiSchema Slim
+  optischema:
     build:
       context: .
-      dockerfile: docker/backend.Dockerfile
-    container_name: optischema-api
+      dockerfile: Dockerfile
+    container_name: optischema
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
-      - BACKEND_HOST=${BACKEND_HOST:-0.0.0.0}
-      - BACKEND_PORT=${BACKEND_PORT:-8080}
-      - BACKEND_RELOAD=${BACKEND_RELOAD:-true}
-      - ENVIRONMENT=${ENVIRONMENT:-development}
-      - DEBUG=${DEBUG:-true}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - CACHE_TTL=${CACHE_TTL:-3600}
-      - CACHE_SIZE=${CACHE_SIZE:-1000}
-      - POLLING_INTERVAL=${POLLING_INTERVAL:-30}
-      - TOP_QUERIES_LIMIT=${TOP_QUERIES_LIMIT:-10}
-      - ANALYSIS_INTERVAL=${ANALYSIS_INTERVAL:-60}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - ENVIRONMENT=production
+      - DEBUG=false
     ports:
       - "8080:8080"
     volumes:
-      - ./backend:/app
-      - ./scripts:/scripts
-      - ./.env:/app/.env
-      - api_cache:/app/cache
+      - optischema_data:/app/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
       - optischema-network
     restart: unless-stopped
 
-  # Next.js Frontend
-  optischema-ui:
-    build:
-      context: .
-      dockerfile: docker/frontend.Dockerfile
-    container_name: optischema-ui
-    environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8080
-      - BACKEND_URL=http://optischema-api:8080
-      - NODE_ENV=development
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
-    depends_on:
-      - optischema-api
-    networks:
-      - optischema-network
-    restart: unless-stopped
-
 volumes:
-  api_cache:
+  optischema_data:
     driver: local
 
 networks:
   optischema-network:
     driver: bridge
- 

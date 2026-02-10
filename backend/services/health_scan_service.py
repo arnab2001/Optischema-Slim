@@ -4,7 +4,8 @@ from typing import Dict, Any, List
 from datetime import datetime
 from connection_manager import connection_manager
 from services.llm_service import llm_service
-from storage import save_health_result
+from storage import save_health_result, get_setting
+from models import HealthThresholds
 
 logger = logging.getLogger(__name__)
 
@@ -14,15 +15,19 @@ class HealthScanService:
         Orchestrate the health scan and return unified structured data.
         Satisfies both HealthScanWidget (summary/bloat) and HealthPanel (issues).
         """
-        vitals = await self.collect_vitals(limit)
+        # 0. Load Thresholds
+        thresholds_dict = await get_setting("health_thresholds")
+        thresholds = HealthThresholds(**(thresholds_dict or {}))
+        
+        vitals = await self.collect_vitals(limit, thresholds)
         if 'error' in vitals:
              return {"error": vitals['error']}
              
         # 1. Process Rule-based Vitals (for the widget)
-        report = self.process_vitals_rules(vitals)
+        report = self.process_vitals_rules(vitals, thresholds)
         
         # 2. Calculate Deterministic Score
-        score, deductions = self.calculate_deterministic_score(vitals, report)
+        score, deductions = self.calculate_deterministic_score(vitals, report, thresholds)
         report['score_breakdown'] = deductions
         
         # 3. Add AI Triage (using the deterministic score)
@@ -42,7 +47,7 @@ class HealthScanService:
             
         return report
 
-    async def collect_vitals(self, limit: int = 50) -> Dict[str, Any]:
+    async def collect_vitals(self, limit: int = 50, thresholds: HealthThresholds = HealthThresholds()) -> Dict[str, Any]:
         """
         Run the 4 data collection queries.
         """
@@ -59,7 +64,7 @@ class HealthScanService:
 
                 # 2. Top Queries (Filtered for system noise)
                 vitals['top_queries'] = await conn.fetch(f"""
-                    SELECT queryid, query, total_exec_time::float, calls, mean_exec_time::float 
+                    SELECT queryid::text, query, total_exec_time::float, calls, mean_exec_time::float, rows 
                     FROM pg_stat_statements 
                     WHERE query NOT ILIKE '%%pg_switch_wal%%'
                       AND query NOT ILIKE '%%pg_version%%'
@@ -77,8 +82,10 @@ class HealthScanService:
                 # 3. Bloat
                 vitals['bloat'] = await conn.fetch(f"""
                     SELECT schemaname, relname as table, n_live_tup as live_tuples, n_dead_tup as dead_tuples,
-                        round((n_dead_tup::numeric / nullif(n_live_tup, 0)) * 100, 2)::float as dead_ratio,
-                        last_autovacuum
+                        round((n_dead_tup::numeric / nullif(n_live_tup + n_dead_tup, 0)) * 100, 2)::float as dead_ratio,
+                        last_autovacuum,
+                        pg_relation_size(relid) as total_bytes,
+                        pg_size_pretty(pg_relation_size(relid)) as total_size
                     FROM pg_stat_user_tables 
                     WHERE n_dead_tup > 50 
                     ORDER BY dead_ratio DESC LIMIT {limit};
@@ -99,6 +106,7 @@ class HealthScanService:
                     JOIN pg_index i ON s.indexrelid = i.indexrelid
                     WHERE s.idx_scan = 0 
                     AND i.indisunique = false
+                    AND pg_relation_size(s.indexrelid) > {thresholds.index_unused_min_size_mb * 1024 * 1024}
                     ORDER BY pg_relation_size(s.indexrelid) DESC
                     LIMIT {limit};
                 """)
@@ -116,25 +124,32 @@ class HealthScanService:
             
         return vitals
 
-    def process_vitals_rules(self, vitals: Dict[str, Any]) -> Dict[str, Any]:
+    def process_vitals_rules(self, vitals: Dict[str, Any], thresholds: HealthThresholds = HealthThresholds()) -> Dict[str, Any]:
         """
         Process raw vitals into the HealthScanWidget generic structure (Rule-based).
         """
         # Process Bloat
         bloat_issues = []
+        min_bloat_bytes = thresholds.bloat_min_size_mb * 1024 * 1024
         for row in vitals.get('bloat', []):
             r = dict(row)
-            if r['dead_ratio'] and r['dead_ratio'] > 20:
+            if r['dead_ratio'] and r['dead_ratio'] > thresholds.bloat_min_ratio_percent:
+                # Only alert if table size exceeds thresholds
+                if (r['total_bytes'] or 0) < min_bloat_bytes:
+                    continue
+                    
                 bloat_issues.append({
                     "schema": r['schemaname'],
                     "table": r['table'],
                     "dead_ratio": r['dead_ratio'],
                     "live_tuples": r['live_tuples'],
                     "dead_tuples": r['dead_tuples'],
+                    "total_bytes": r['total_bytes'],
+                    "total_size": r['total_size'],
                     "last_autovacuum": str(r['last_autovacuum']) if r['last_autovacuum'] else None,
                     "vacuum_overdue": True,
                     "severity": "high" if r['dead_ratio'] > 50 else "medium",
-                    "recommendation": f"Run VACUUM FULL {r['schemaname']}.{r['table']}"
+                    "recommendation": f"VACUUM (VERBOSE, ANALYZE) \"{r['schemaname']}\".\"{r['table']}\";"
                 })
 
         # Process Unused Indexes
@@ -233,6 +248,7 @@ class HealthScanService:
                 "issues": config_issues,
                 "total_settings_checked": len(vitals.get('config', []))
             },
+            "top_queries": [dict(q) for q in vitals.get('top_queries', [])],
             "summary": {
                 "total_bloated_tables": len(bloat_issues),
                 "total_unused_indexes": len(index_issues),
@@ -240,7 +256,7 @@ class HealthScanService:
             }
         }
 
-    def calculate_deterministic_score(self, vitals: Dict[str, Any], rule_report: Dict[str, Any]) -> tuple[int, List[str]]:
+    def calculate_deterministic_score(self, vitals: Dict[str, Any], rule_report: Dict[str, Any], thresholds: HealthThresholds = HealthThresholds()) -> tuple[int, List[str]]:
         """
         Calculate a health score based on strict rules rather than AI hallucination.
         Returns (score, explanation_points).
@@ -265,26 +281,23 @@ class HealthScanService:
             if mean_time > 1000: # 1s
                 perf_penalty += 10
                 slow_queries_count += 1
-            elif mean_time > 100: # 100ms
+            elif mean_time > thresholds.query_slow_ms: 
                 perf_penalty += 3
                 slow_queries_count += 1
                 
             # Workload Penalty (Contribution to total DB time)
             if total_db_time > 0:
                 workload_percent = (total_time / total_db_time) * 100
-                if workload_percent > 25:
-                    perf_penalty += 15
+                if workload_percent > thresholds.query_high_impact_percent:
+                    impact_penalty = 15 if workload_percent > 40 else 5
+                    perf_penalty += impact_penalty
                     workload_heavy_count += 1
-                    deductions.append(f"-15 pts: Query {qty['queryid']} impacts >25% of DB time")
-                elif workload_percent > 10:
-                    perf_penalty += 5
-                    workload_heavy_count += 1
-                    deductions.append(f"-5 pts: Query {qty['queryid']} impacts >10% of DB time")
+                    deductions.append(f"-{impact_penalty} pts: Query {qty['queryid']} impacts >{thresholds.query_high_impact_percent}% of DB time")
         
         # Base latency deduction summary
         if slow_queries_count > 0:
             lat_deduction = min(perf_penalty, 30) # Latency portion capped
-            deductions.append(f"-{lat_deduction} pts: {slow_queries_count} Slow Queries (>100ms) detected")
+            deductions.append(f"-{lat_deduction} pts: {slow_queries_count} Slow Queries (>{thresholds.query_slow_ms}ms) detected")
 
         # Total perf penalty cap
         score -= min(perf_penalty, 50)

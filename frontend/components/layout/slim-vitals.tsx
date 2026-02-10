@@ -26,7 +26,7 @@ export function SlimVitals() {
 
     const fetchData = async () => {
         if (!isConnected) return;
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
         try {
             const res = await fetch(`${apiUrl}/api/metrics/vitals`);
             if (res.ok) {

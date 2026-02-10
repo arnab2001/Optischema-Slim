@@ -11,12 +11,13 @@ interface ConnectionState {
     setConnectionString: (connectionString: string) => void;
     setConnectionStatus: (status: 'idle' | 'connecting' | 'connected' | 'error') => void;
     setErrorMessage: (message: string | null) => void;
+    syncStatus: () => Promise<void>;
     disconnect: () => void;
 }
 
 export const useConnectionStore = create<ConnectionState>()(
     persist(
-        (set) => ({
+        (set, get) => ({
             isConnected: false,
             connectionString: null,
             connectionStatus: 'idle',
@@ -26,6 +27,29 @@ export const useConnectionStore = create<ConnectionState>()(
             setConnectionString: (connectionString) => set({ connectionString }),
             setConnectionStatus: (status) => set({ connectionStatus: status }),
             setErrorMessage: (message) => set({ errorMessage: message }),
+
+            syncStatus: async () => {
+                try {
+                    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
+                    const res = await fetch(`${apiUrl}/api/connection/status`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.connected) {
+                            set({
+                                isConnected: true,
+                                connectionStatus: 'connected',
+                                // If backend has a connection string, update it if not set
+                                connectionString: get().connectionString || data.current_config?.connection_string || null
+                            });
+                        } else {
+                            set({ isConnected: false, connectionStatus: 'idle' });
+                        }
+                    }
+                } catch (e) {
+                    console.error("Failed to sync connection status:", e);
+                }
+            },
+
             disconnect: () => set({
                 isConnected: false,
                 connectionString: null,

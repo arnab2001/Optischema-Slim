@@ -110,4 +110,4 @@ async def verify_impact(request: VerifyRequest):
     """
     Verify the impact of an index suggestion using HypoPG.
     """
-    return await simulation_service.verify_index_impact(request.query, request.sql)
+    return await simulation_service.simulate_index(request.query, request.sql)

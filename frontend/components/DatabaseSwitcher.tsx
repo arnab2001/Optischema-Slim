@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Database, Settings, History, LogOut, CheckCircle, XCircle, Loader, ChevronDown, ChevronUp, AlertTriangle, Activity, RefreshCw, Star, Trash2 } from 'lucide-react'
 import { SaveConnectionDialog } from './SaveConnectionDialog'
+import { useConnectionStore } from '@/store/connectionStore'
 
 interface ConnectionConfig {
   host: string
@@ -10,6 +11,7 @@ interface ConnectionConfig {
   user?: string
   password: string
   ssl?: boolean
+  connection_string?: string
 }
 
 interface ConnectionHistory {
@@ -21,10 +23,12 @@ interface ConnectionHistory {
 interface ConnectionStatus {
   connected: boolean
   current_config: ConnectionConfig | null
+  saved_connection_id?: number | null
   connection_history: ConnectionHistory[]
 }
 
 export default function DatabaseSwitcher() {
+  const { syncStatus } = useConnectionStore()
   const [isOpen, setIsOpen] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus | null>(null)
   const [loading, setLoading] = useState(false)
@@ -65,6 +69,9 @@ export default function DatabaseSwitcher() {
   // Fetch current connection status
   const fetchConnectionStatus = async () => {
     try {
+      // Sync with global store
+      await syncStatus()
+
       const response = await fetch('/api/connection/status')
       if (response.ok) {
         const status = await response.json()
@@ -102,7 +109,7 @@ export default function DatabaseSwitcher() {
     fetchConnectionStatus()
     fetchPgStatInfo()
     fetchSavedConnections()
-    
+
     // Refresh saved connections when dialog opens
     if (isOpen) {
       fetchSavedConnections()
@@ -112,7 +119,7 @@ export default function DatabaseSwitcher() {
   const testConnection = async () => {
     setTesting(true)
     setTestResult(null)
-    
+
     try {
       const response = await fetch('/api/connection/test', {
         method: 'POST',
@@ -121,7 +128,7 @@ export default function DatabaseSwitcher() {
         },
         body: JSON.stringify(newConnection),
       })
-      
+
       const result = await response.json()
       setTestResult(result)
     } catch (error) {
@@ -136,10 +143,10 @@ export default function DatabaseSwitcher() {
 
   const switchConnection = async () => {
     setLoading(true)
-    
+
     try {
       console.log('Switching to connection:', newConnection)
-      
+
       const response = await fetch('/api/connection/switch', {
         method: 'POST',
         headers: {
@@ -147,27 +154,27 @@ export default function DatabaseSwitcher() {
         },
         body: JSON.stringify(newConnection),
       })
-      
+
       console.log('Switch response status:', response.status)
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
-      
+
       const result = await response.json()
       console.log('Switch response:', result)
-      
+
       if (result.success) {
         console.log('Switch successful, refreshing connection status...')
-        
+
         // Refresh connection status
         await fetchConnectionStatus()
         setIsOpen(false)
         setTestResult(null)
-        
+
         // Show success message and reload the page
         console.log('Successfully connected to new database! Reloading dashboard...')
-        
+
         // Reload the page to refresh all data
         try {
           window.location.reload()
@@ -193,12 +200,12 @@ export default function DatabaseSwitcher() {
 
   const disconnect = async () => {
     setLoading(true)
-    
+
     try {
       const response = await fetch('/api/connection/disconnect', {
         method: 'POST',
       })
-      
+
       if (response.ok) {
         await fetchConnectionStatus()
         // Reload the page
@@ -217,12 +224,12 @@ export default function DatabaseSwitcher() {
   }
 
   const handleSaveCurrentConnection = async (name: string) => {
-    if (!connectionStatus.current_config) {
+    if (!connectionStatus || !connectionStatus.current_config) {
       throw new Error("No active connection to save")
     }
-    
+
     const config = connectionStatus.current_config
-    
+
     // Extract connection details from connection_string (most reliable)
     let extractedHost = config.host
     let extractedPort = config.port || '5432'
@@ -230,20 +237,20 @@ export default function DatabaseSwitcher() {
     let extractedDb = config.database
     let extractedPassword = ''
     let extractedSsl = config.ssl || false
-    
+
     if (config.connection_string) {
       try {
         // Normalize postgres:// to postgresql:// for URL parsing
         const normalizedStr = config.connection_string.replace(/^postgres:\/\//, 'postgresql://')
         const url = new URL(normalizedStr)
-        
+
         extractedHost = url.hostname || extractedHost
         extractedPort = url.port || extractedPort
         extractedUser = url.username ? decodeURIComponent(url.username) : extractedUser
         extractedPassword = url.password ? decodeURIComponent(url.password) : ''
         extractedDb = url.pathname ? url.pathname.replace(/^\//, '') : extractedDb
         extractedSsl = normalizedStr.includes('sslmode=require') || extractedSsl
-        
+
         console.log('Extracted from connection string:', {
           host: extractedHost,
           port: extractedPort,
@@ -256,11 +263,11 @@ export default function DatabaseSwitcher() {
         console.warn('Could not parse connection string:', e)
       }
     }
-    
+
     if (!extractedPassword) {
       throw new Error("Could not extract password from connection. Please reconnect with your credentials.")
     }
-    
+
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
     const savePayload = {
       name,
@@ -271,81 +278,77 @@ export default function DatabaseSwitcher() {
       password: extractedPassword,
       ssl: extractedSsl
     }
-    
+
     console.log('Saving connection:', { ...savePayload, password: '***' })
-    
+
     const response = await fetch(`${apiUrl}/api/connection/save`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(savePayload)
     })
-    
+
     if (!response.ok) {
       let errorMessage = 'Failed to save connection'
       try {
         const error = await response.json()
-        errorMessage = error.detail || error.message || error.error || errorMessage
-        // Handle structured error responses
-        if (typeof errorMessage === 'object' && errorMessage.message) {
-          errorMessage = errorMessage.message
-        }
+        errorMessage = (error.detail && typeof error.detail === 'string') ? error.detail :
+          (error.message && typeof error.message === 'string') ? error.message :
+            (error.error && typeof error.error === 'string') ? error.error : errorMessage
       } catch (e) {
         errorMessage = response.statusText || errorMessage
       }
       throw new Error(errorMessage)
     }
-    
+
     const result = await response.json()
     console.log('Connection saved successfully:', result)
-    
+
     // Refresh saved connections and connection status
     await Promise.all([
       fetchSavedConnections(),
       fetchConnectionStatus()
     ])
-    
+
     // Show success message
     alert(`Connection "${name}" saved successfully!`)
   }
 
   const handleSwitchToSaved = async (connectionId: number) => {
     if (loading) return // Prevent double-clicks
-    
+
     setLoading(true)
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
       console.log('Switching to connection ID:', connectionId)
-      
+
       const response = await fetch(`${apiUrl}/api/connection/switch/${connectionId}`, {
         method: 'POST'
       })
-      
+
       if (!response.ok) {
         let errorMessage = 'Failed to switch connection'
         try {
           const error = await response.json()
-          errorMessage = error.detail || error.message || error.error || errorMessage
-          // Handle structured error responses
-          if (typeof errorMessage === 'object' && errorMessage.message) {
-            errorMessage = errorMessage.message
-          }
+          errorMessage = (error.detail && typeof error.detail === 'string') ? error.detail :
+            (error.message && typeof error.message === 'string') ? error.message :
+              (error.error && typeof error.error === 'string') ? error.error : errorMessage
         } catch (e) {
           errorMessage = response.statusText || errorMessage
         }
         throw new Error(errorMessage)
       }
-      
+
       const result = await response.json()
       console.log('Switch successful:', result)
-      
+
       // Refresh connection status and saved connections
       await Promise.all([
         fetchConnectionStatus(),
         fetchSavedConnections()
       ])
-      
+
       setIsOpen(false)
-      
+
       // Reload page to refresh all data
       setTimeout(() => {
         window.location.reload()
@@ -362,13 +365,13 @@ export default function DatabaseSwitcher() {
     if (!confirm('Are you sure you want to delete this saved connection?')) {
       return
     }
-    
+
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
       const response = await fetch(`${apiUrl}/api/connection/saved/${connectionId}`, {
         method: 'DELETE'
       })
-      
+
       if (!response.ok) {
         let errorMessage = 'Failed to delete connection'
         try {
@@ -379,10 +382,10 @@ export default function DatabaseSwitcher() {
         }
         throw new Error(errorMessage)
       }
-      
+
       await fetchSavedConnections()
       // If deleted connection was the active one, refresh status
-      if (connectionStatus.saved_connection_id === connectionId) {
+      if (connectionStatus && connectionStatus.saved_connection_id === connectionId) {
         await fetchConnectionStatus()
       }
     } catch (error) {
@@ -397,7 +400,7 @@ export default function DatabaseSwitcher() {
       const response = await fetch('/api/connection/enable-pg-stat', {
         method: 'POST'
       })
-      
+
       if (response.ok) {
         const result = await response.json()
         alert(result.message)
@@ -418,13 +421,13 @@ export default function DatabaseSwitcher() {
     if (!confirm('Are you sure you want to reset pg_stat_statements? This will clear all collected query statistics.')) {
       return
     }
-    
+
     try {
       setLoading(true)
       const response = await fetch('/api/connection/reset-pg-stat', {
         method: 'POST'
       })
-      
+
       if (response.ok) {
         const result = await response.json()
         alert(result.message)
@@ -472,14 +475,14 @@ export default function DatabaseSwitcher() {
             <span className="font-medium text-gray-600">Not Connected</span>
           )}
         </div>
-        
+
         {connectionStatus.connected && (
           <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-gray-200">
             <div className="w-2 h-2 bg-green-500 rounded-full"></div>
             <span className="text-xs font-medium text-green-600">Connected</span>
           </div>
         )}
-        
+
         {isOpen ? (
           <ChevronUp className="w-4 h-4 text-gray-400 ml-1" />
         ) : (
@@ -549,7 +552,7 @@ export default function DatabaseSwitcher() {
                   {showSavedConnections ? <ChevronUp className="w-3 h-3 ml-auto" /> : <ChevronDown className="w-3 h-3 ml-auto" />}
                 </button>
               </div>
-              
+
               {showSavedConnections && (
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {savedConnections.length === 0 ? (
@@ -560,11 +563,10 @@ export default function DatabaseSwitcher() {
                     savedConnections.map((conn) => (
                       <div
                         key={conn.id}
-                        className={`p-3 rounded-lg border transition-colors ${
-                          connectionStatus.saved_connection_id === conn.id
-                            ? 'bg-blue-50 border-blue-300 shadow-sm'
-                            : 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
-                        }`}
+                        className={`p-3 rounded-lg border transition-colors ${connectionStatus.saved_connection_id === conn.id
+                          ? 'bg-blue-50 border-blue-300 shadow-sm'
+                          : 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
+                          }`}
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1 min-w-0">
@@ -591,11 +593,10 @@ export default function DatabaseSwitcher() {
                             <button
                               onClick={() => handleSwitchToSaved(conn.id)}
                               disabled={loading || connectionStatus.saved_connection_id === conn.id}
-                              className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
-                                connectionStatus.saved_connection_id === conn.id
-                                  ? 'bg-gray-200 text-gray-600 cursor-not-allowed'
-                                  : 'bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed'
-                              }`}
+                              className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${connectionStatus.saved_connection_id === conn.id
+                                ? 'bg-gray-200 text-gray-600 cursor-not-allowed'
+                                : 'bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed'
+                                }`}
                               title={connectionStatus.saved_connection_id === conn.id ? "Currently connected" : "Connect to this database"}
                             >
                               {connectionStatus.saved_connection_id === conn.id ? 'Active' : 'Connect'}
@@ -628,7 +629,7 @@ export default function DatabaseSwitcher() {
                   <span>pg_stat_statements Manager</span>
                   {showPgStatManager ? <ChevronUp className="w-3 h-3 ml-auto" /> : <ChevronDown className="w-3 h-3 ml-auto" />}
                 </button>
-                
+
                 {showPgStatManager && (
                   <div className="mt-3 bg-gray-50 rounded-lg p-3">
                     {pgStatInfo ? (
@@ -647,7 +648,7 @@ export default function DatabaseSwitcher() {
                             </>
                           )}
                         </div>
-                        
+
                         {/* Statistics */}
                         {pgStatInfo.enabled && (
                           <div className="text-xs text-gray-600 space-y-1">
@@ -667,7 +668,7 @@ export default function DatabaseSwitcher() {
                             )}
                           </div>
                         )}
-                        
+
                         {/* Actions */}
                         <div className="flex space-x-2 pt-2">
                           {!pgStatInfo.enabled && (
@@ -680,7 +681,7 @@ export default function DatabaseSwitcher() {
                               <span>Enable</span>
                             </button>
                           )}
-                          
+
                           <button
                             onClick={() => fetchPgStatInfo()}
                             disabled={loading}
@@ -689,7 +690,7 @@ export default function DatabaseSwitcher() {
                             <RefreshCw className="w-3 h-3" />
                             <span>Refresh</span>
                           </button>
-                          
+
                           {pgStatInfo.enabled && (
                             <button
                               onClick={handleResetPgStat}
@@ -724,7 +725,7 @@ export default function DatabaseSwitcher() {
                   <span>Connection History</span>
                   {showHistory ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                 </button>
-                
+
                 {showHistory && (
                   <div className="mt-2 space-y-2 max-h-32 overflow-y-auto">
                     {connectionStatus.connection_history.map((item, index) => (
@@ -749,7 +750,7 @@ export default function DatabaseSwitcher() {
             {/* New Connection Form */}
             <div className="space-y-3">
               <h4 className="text-sm font-medium text-gray-900">Connect to New Database</h4>
-              
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Host</label>
@@ -823,11 +824,10 @@ export default function DatabaseSwitcher() {
 
               {/* Test Result */}
               {testResult && (
-                <div className={`p-4 rounded-lg border-2 ${
-                  testResult.success 
-                    ? 'bg-green-50 border-green-300 text-green-800' 
-                    : 'bg-red-50 border-red-300 text-red-800'
-                }`}>
+                <div className={`p-4 rounded-lg border-2 ${testResult.success
+                  ? 'bg-green-50 border-green-300 text-green-800'
+                  : 'bg-red-50 border-red-300 text-red-800'
+                  }`}>
                   <div className="flex items-center space-x-2 mb-3">
                     {testResult.success ? (
                       <CheckCircle className="w-5 h-5 text-green-600" />
@@ -864,11 +864,10 @@ export default function DatabaseSwitcher() {
                 <button
                   onClick={testConnection}
                   disabled={testing}
-                  className={`flex-1 flex items-center justify-center space-x-1 px-3 py-2 text-sm rounded transition-all duration-200 ${
-                    testing 
-                      ? 'bg-gray-200 text-gray-500 cursor-not-allowed' 
-                      : 'bg-blue-100 text-blue-700 hover:bg-blue-200 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2'
-                  }`}
+                  className={`flex-1 flex items-center justify-center space-x-1 px-3 py-2 text-sm rounded transition-all duration-200 ${testing
+                    ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                    : 'bg-blue-100 text-blue-700 hover:bg-blue-200 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2'
+                    }`}
                 >
                   {testing ? (
                     <Loader className="w-4 h-4 animate-spin" />
@@ -877,15 +876,14 @@ export default function DatabaseSwitcher() {
                   )}
                   <span>{testing ? 'Testing...' : 'Test Connection'}</span>
                 </button>
-                
+
                 <button
                   onClick={switchConnection}
                   disabled={loading || !testResult?.success}
-                  className={`flex-1 flex items-center justify-center space-x-1 px-3 py-2 text-sm rounded transition-all duration-200 ${
-                    testResult?.success 
-                      ? 'bg-green-600 text-white hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2' 
-                      : 'bg-gray-200 text-gray-500 cursor-not-allowed border border-gray-300'
-                  }`}
+                  className={`flex-1 flex items-center justify-center space-x-1 px-3 py-2 text-sm rounded transition-all duration-200 ${testResult?.success
+                    ? 'bg-green-600 text-white hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2'
+                    : 'bg-gray-200 text-gray-500 cursor-not-allowed border border-gray-300'
+                    }`}
                   title={!testResult?.success ? 'Test connection first' : 'Connect to this database'}
                 >
                   {loading ? (
@@ -896,7 +894,7 @@ export default function DatabaseSwitcher() {
                   <span>{loading ? 'Connecting...' : 'Connect'}</span>
                 </button>
               </div>
-              
+
               {/* Connection Status */}
               {testResult && (
                 <div className="text-xs text-gray-600 mt-3 p-3 bg-gray-50 rounded border">

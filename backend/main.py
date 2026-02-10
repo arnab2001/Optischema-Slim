@@ -84,27 +84,48 @@ app.include_router(settings_router.router)
 app.include_router(health.router)
 app.include_router(ai_analysis.router)
 
+# Mount static files for the frontend (All-In-One image support)
+from fastapi.staticfiles import StaticFiles
+import os
 
-@app.get("/")
-async def root():
-    """Root endpoint."""
+# Create static directory if it doesn't exist (only for local dev, in Docker it's copied)
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_dir):
+    app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
+
+    # Catch-all route for SPA (Next.js) routing
+    # This ensures that refreshing on /dashboard or other routes serves index.html
+    @app.exception_handler(404)
+    async def spa_fallback(request, exc):
+        if not request.url.path.startswith("/api") and not request.url.path.startswith("/health"):
+            # Try to serve index.html from the root of the static directory
+            index_path = os.path.join(static_dir, "index.html")
+            if os.path.exists(index_path):
+                from fastapi.responses import FileResponse
+                return FileResponse(index_path)
+        return await http_exception_handler(request, exc)
+
+
+@app.get("/api")
+async def api_info():
+    """Root API info endpoint."""
     return {
         "message": "OptiSchema API",
         "version": "1.0.0",
         "docs": "/docs",
-        "health": "/health"
+        "health": "/api/health/check"
     }
 
 
-@app.get("/health", response_model=HealthCheck)
+@app.get("/api/health/check", response_model=HealthCheck)
 async def health_check():
-    """Health check endpoint."""
+    """Basic health check endpoint for monitoring and docker."""
     try:
         # Check database health
         db_healthy = await connection_manager.check_connection_health()
         
-        # Check OpenAI API (basic check - we'll implement this later)
-        openai_healthy = bool(settings.openai_api_key)
+        # Check AI config
+        ai_healthy = bool(settings.openai_api_key or settings.gemini_api_key or settings.deepseek_api_key)
         
         # Determine overall status
         status = "healthy" if db_healthy else "unhealthy"
@@ -113,7 +134,7 @@ async def health_check():
             status=status,
             timestamp=datetime.utcnow(),
             database=db_healthy,
-            openai=openai_healthy,
+            openai=ai_healthy,
             version="1.0.0",
             uptime=time.time() - start_time
         )
@@ -128,12 +149,6 @@ async def health_check():
             version="1.0.0",
             uptime=time.time() - start_time
         )
-
-
-@app.get("/api/health")
-async def api_health():
-    """API health check endpoint."""
-    return await health_check()
 
 
 # Error handlers

@@ -20,7 +20,7 @@ export default function SavedPage() {
     const [saved, setSaved] = useState<SavedOptimization[]>([]);
     const [loading, setLoading] = useState(true);
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
 
     useEffect(() => {
         fetchSaved();

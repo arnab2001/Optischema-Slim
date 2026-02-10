@@ -97,7 +97,7 @@ export function ConnectionWizard({ onConnect }: ConnectionWizardProps) {
     finalConnectionString = normalizeConnectionString(finalConnectionString);
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
       const res = await fetch(`${apiUrl}/api/connection/connect`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -154,7 +154,7 @@ export function ConnectionWizard({ onConnect }: ConnectionWizardProps) {
             }
           }
 
-          const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+          const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
           const saveRes = await fetch(`${apiUrl}/api/connection/save`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },

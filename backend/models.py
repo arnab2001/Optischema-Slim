@@ -310,3 +310,29 @@ class HealthScanResult(BaseModel):
     error: Optional[str] = Field(None, description="Error message if scan failed")
     
     model_config = ConfigDict(from_attributes=True) 
+class HealthThresholds(BaseModel):
+    """Model for health check thresholds."""
+    
+    # Bloat Thresholds
+    bloat_min_size_mb: int = Field(default=100, description="Don't alert if table is smaller than this")
+    bloat_min_ratio_percent: int = Field(default=20, description="Don't alert if bloat is < 20%")
+    
+    # Index Thresholds
+    index_unused_min_size_mb: int = Field(default=10, description="Ignore tiny indexes")
+    
+    # Query Thresholds
+    query_slow_ms: int = Field(default=100, description="What counts as slow")
+    query_high_impact_percent: int = Field(default=20, description="Query takes up > 20% of total DB time")
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra = {
+            "example": {
+                "bloat_min_size_mb": 100,
+                "bloat_min_ratio_percent": 20,
+                "index_unused_min_size_mb": 10,
+                "query_slow_ms": 100,
+                "query_high_impact_percent": 20
+            }
+        }
+    )

@@ -89,6 +89,7 @@ interface ScanResult {
         issues: ConfigIssue[];
         total_settings_checked: number;
     };
+    top_queries: any[];
     summary: {
         total_bloated_tables: number;
         total_unused_indexes: number;
@@ -105,7 +106,6 @@ export function HealthDoctor() {
     const [scanLimit, setScanLimit] = useState(50);
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState<ScanResult | null>(null);
-    const [expandedSection, setExpandedSection] = useState<string | null>(null);
     const [showSqlModal, setShowSqlModal] = useState<string | null>(null);
     const [showMethodology, setShowMethodology] = useState(false);
     const [copied, setCopied] = useState(false);
@@ -115,7 +115,7 @@ export function HealthDoctor() {
     const [history, setHistory] = useState<ScanResult[]>([]);
     const [loadingHistory, setLoadingHistory] = useState(false);
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
 
     const fetchLatest = async () => {
         try {
@@ -239,27 +239,7 @@ export function HealthDoctor() {
                             </div>
                         )}
                     </div>
-                    <div className="flex items-center gap-2">
-                        {/* Limit Dropdown */}
-                        <div className="relative">
-                            <select
-                                value={scanLimit}
-                                onChange={(e) => setScanLimit(Number(e.target.value))}
-                                className={`text-xs font-bold py-2 pl-3 pr-8 rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/50 ${isDark
-                                    ? "bg-slate-800 border border-slate-600 text-slate-300 hover:bg-slate-700"
-                                    : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm"
-                                    }`}
-                            >
-                                <option value={50}>50 Items</option>
-                                <option value={100}>100 Items</option>
-                                <option value={500}>500 Items</option>
-                                <option value={5000}>5000 Items</option>
-                            </select>
-                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
-                                <ChevronDown className="h-3 w-3" />
-                            </div>
-                        </div>
-
+                    <div className="flex items-center gap-3">
                         <button
                             onClick={() => setShowHistory(true)}
                             className={`p-2 rounded-lg transition-colors ${isDark ? "hover:bg-slate-700 text-slate-400" : "hover:bg-slate-100 text-slate-500"}`}
@@ -281,7 +261,7 @@ export function HealthDoctor() {
                     </div>
                 </div>
 
-                <div className="p-6">
+                <div className="p-4">
                     {!result && !loading ? (
                         <div className={`p-12 rounded-xl border border-dashed text-center flex flex-col items-center ${isDark ? "border-slate-700 bg-slate-900/50" : "border-slate-200 bg-slate-50/50"}`}>
                             <Database className={`w-16 h-16 mb-4 opacity-20 ${isDark ? "text-white" : "text-slate-900"}`} />
@@ -291,57 +271,71 @@ export function HealthDoctor() {
                             </p>
                         </div>
                     ) : result ? (
-                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                            {/* Score & AI Triage */}
-                            <div className="lg:col-span-4 flex flex-col items-center">
-                                <div className={`w-full p-8 rounded-2xl border ${getHealthBgColor(result.health_score)} transition-colors duration-500 relative overflow-hidden`}>
-                                    <div className="flex flex-col items-center justify-center relative z-10 w-full">
-                                        <HealthScoreGauge score={result.health_score} loading={loading} />
-                                        <div className="mt-6 text-center w-full relative">
-                                            <div className="flex items-center justify-center gap-1">
-                                                <span className={`text-xs uppercase tracking-widest font-black ${isDark ? "text-slate-500" : "text-slate-400"}`}>Health Score</span>
-                                                <button
-                                                    onMouseEnter={() => setShowMethodology(true)}
-                                                    onMouseLeave={() => setShowMethodology(false)}
-                                                    className="p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-                                                >
-                                                    <Info className="w-3.5 h-3.5 opacity-40 hover:opacity-100 transition-opacity" />
-                                                </button>
-
-                                                {showMethodology && result.score_breakdown && (
-                                                    <div className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-64 p-4 rounded-xl shadow-2xl z-[100] border backdrop-blur-md animate-in fade-in zoom-in-95 duration-200 ${isDark ? "bg-slate-900/95 border-slate-700 text-slate-300" : "bg-white/95 border-slate-200 text-slate-700"
-                                                        }`}>
-                                                        <p className="text-[10px] uppercase font-bold text-center opacity-60 mb-3 border-b border-black/10 dark:border-white/10 pb-2">Score Methodology</p>
-                                                        <ul className="space-y-2">
-                                                            {result.score_breakdown.map((point, idx) => (
-                                                                <li key={idx} className="text-[10px] leading-relaxed flex items-start gap-2">
-                                                                    <div className="mt-1 w-1 h-1 rounded-full bg-red-500 flex-shrink-0" />
-                                                                    <span>{point}</span>
-                                                                </li>
-                                                            ))}
-                                                        </ul>
-                                                    </div>
-                                                )}
+                        <div className="flex flex-col gap-6">
+                            {/* Score & Recent Findings Header */}
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <div className="relative group/gauge">
+                                        <HealthScoreGauge score={result.health_score} loading={loading} compact />
+                                        <button
+                                            onMouseEnter={() => setShowMethodology(true)}
+                                            onMouseLeave={() => setShowMethodology(false)}
+                                            className="absolute -top-1 -right-1 p-1 rounded-full bg-slate-800/80 backdrop-blur-sm border border-slate-700 opacity-0 group-hover/gauge:opacity-100 transition-opacity"
+                                        >
+                                            <Info className="w-2.5 h-2.5 text-slate-400" />
+                                        </button>
+                                        {showMethodology && result.score_breakdown && (
+                                            <div className={`absolute top-full left-0 mt-2 w-64 p-3 rounded-xl shadow-2xl z-[100] border backdrop-blur-md animate-in fade-in zoom-in-95 duration-200 ${isDark ? "bg-slate-900/95 border-slate-700 text-slate-300" : "bg-white/95 border-slate-200 text-slate-700"}`}>
+                                                <p className="text-[10px] uppercase font-bold mb-2 border-b border-black/10 dark:border-white/10 pb-1">Score Methodology</p>
+                                                <ul className="space-y-1.5">
+                                                    {result.score_breakdown.map((point, idx) => (
+                                                        <li key={idx} className="text-[10px] leading-relaxed flex items-start gap-2">
+                                                            <div className="mt-1 w-1 h-1 rounded-full bg-red-500 flex-shrink-0" />
+                                                            <span>{point}</span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
                                             </div>
-                                            <p className={`text-sm mt-1 font-medium ${isDark ? "text-slate-300" : "text-slate-600"}`}>
-                                                {result.health_score >= 80 ? "Peak Condition" : result.health_score >= 50 ? "Needs Attention" : "Critical State"}
-                                            </p>
-                                        </div>
+                                        )}
                                     </div>
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <h3 className={`text-base font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
+                                                {result.health_score >= 80 ? "Peak Condition" : result.health_score >= 50 ? "Needs Attention" : "Critical State"}
+                                            </h3>
+                                            <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${getHealthBgColor(result.health_score)}`}>
+                                                {result.health_score} / 100
+                                            </span>
+                                        </div>
+                                        <p className={`text-xs ${isDark ? "text-slate-500" : "text-slate-400"}`}>
+                                            PostgreSQL performance and schema audit
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-4">
+                                    <div className="text-right">
+                                        <h4 className={`text-[10px] uppercase tracking-widest font-bold ${isDark ? "text-slate-500" : "text-slate-400"}`}>Total Findings</h4>
+                                        <p className={`text-lg font-mono font-bold ${isDark ? "text-white" : "text-slate-900"}`}>{result.issues?.length || 0}</p>
+                                    </div>
+                                    <div className="h-8 w-px bg-slate-700/50" />
+                                    <select
+                                        value={scanLimit}
+                                        onChange={(e) => setScanLimit(Number(e.target.value))}
+                                        className={`text-xs font-bold py-1.5 pl-2 pr-6 rounded-lg appearance-none cursor-pointer focus:outline-none ${isDark
+                                            ? "bg-slate-900/50 border border-slate-700/50 text-slate-400 hover:text-slate-200"
+                                            : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm"
+                                            }`}
+                                    >
+                                        <option value={50}>Top 50</option>
+                                        <option value={100}>Top 100</option>
+                                        <option value={500}>Top 500</option>
+                                    </select>
                                 </div>
                             </div>
 
-                            {/* Doctor's Primary Notes (AI Triage) */}
-                            <div className="lg:col-span-8">
-                                <div className="flex items-center justify-between mb-4">
-                                    <h3 className={`text-xs uppercase tracking-[0.2em] font-black ${isDark ? "text-slate-500" : "text-slate-400"}`}>
-                                        Recent Findings ({result.issues?.length || 0})
-                                    </h3>
-                                    <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-500 font-medium">
-                                        AI Prioritized
-                                    </span>
-                                </div>
-
+                            {/* Recent Findings (The Hero) */}
+                            <div className="flex-1 overflow-visible">
                                 {(!result.issues || result.issues.length === 0) ? (
                                     <div className={`h-[300px] flex flex-col items-center justify-center rounded-2xl border border-dashed ${isDark ? "border-slate-700 text-slate-500 bg-slate-900/20" : "border-slate-200 text-slate-400 bg-slate-50/50"}`}>
                                         <div className="flex items-center justify-center w-12 h-12 rounded-full bg-green-500/10 mb-4 animate-pulse">
@@ -351,10 +345,38 @@ export function HealthDoctor() {
                                         <p className="text-xs mt-2 opacity-70">No priority issues requiring immediate attention.</p>
                                     </div>
                                 ) : (
-                                    <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                                        {result.issues.map((issue, i) => (
-                                            <IssueCard key={i} issue={issue} onAction={handleIssueAction} />
-                                        ))}
+                                    <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                                        {result.issues.map((issue: any, i: number) => {
+                                            let extraData = null;
+                                            if (issue.type === "QUERY") {
+                                                extraData = result.top_queries?.find((q: any) => q.queryid === issue.action_payload);
+                                            } else if (issue.type === "SCHEMA") {
+                                                const lowerTitle = issue.title.toLowerCase();
+                                                const lowerDesc = issue.description.toLowerCase();
+                                                if (lowerTitle.includes("bloat") || lowerDesc.includes("bloat")) {
+                                                    const list = result.table_bloat?.issues || [];
+                                                    const matched = list.find((b: any) => issue.action_payload?.includes(b.table) || issue.description?.includes(b.table));
+                                                    extraData = matched || (list.length > 0 ? list : null);
+                                                } else if (lowerTitle.includes("index") || lowerDesc.includes("index")) {
+                                                    const list = result.index_bloat?.unused_indexes || [];
+                                                    const matched = list.find((idx: any) => issue.action_payload?.includes(idx.index) || issue.description?.includes(idx.index));
+                                                    extraData = matched || (list.length > 0 ? list : null);
+                                                }
+                                            } else if (issue.type === "CONFIG") {
+                                                const list = result.config_issues?.issues || [];
+                                                const matched = list.find((c: any) => issue.action_payload?.includes(c.setting) || issue.description?.includes(c.setting));
+                                                extraData = matched || (list.length > 0 ? list : null);
+                                            }
+
+                                            return (
+                                                <IssueCard
+                                                    key={i}
+                                                    issue={issue}
+                                                    extraData={extraData}
+                                                    onAction={handleIssueAction}
+                                                />
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </div>
@@ -363,155 +385,7 @@ export function HealthDoctor() {
                 </div>
             </div>
 
-            {/* Detailed Stats Cards */}
-            {result && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {/* Bloat Card */}
-                    <div
-                        onClick={() => setExpandedSection(expandedSection === "bloat" ? null : "bloat")}
-                        className={`${cardClass} cursor-pointer hover:ring-2 ring-blue-500/20 transition-all ${expandedSection === "bloat" ? "ring-2 ring-blue-500" : ""} group`}
-                    >
-                        <div className="p-4 flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className={`p-2 rounded-lg transition-colors ${isDark ? "bg-red-500/10 group-hover:bg-red-500/20" : "bg-red-50 group-hover:bg-red-100"}`}>
-                                    <Database className={`w-5 h-5 ${isDark ? "text-red-400" : "text-red-500"}`} />
-                                </div>
-                                <div>
-                                    <p className={`text-xs font-bold uppercase tracking-wider ${isDark ? "text-slate-500" : "text-slate-400"}`}>Table Bloat</p>
-                                    <div className="flex items-baseline gap-1">
-                                        <span className={`text-xl font-bold ${result.summary.total_bloated_tables > 0 ? "text-red-500" : isDark ? "text-white" : "text-slate-800"}`}>
-                                            {result.summary.total_bloated_tables}
-                                        </span>
-                                        <span className={`text-xs ${isDark ? "text-slate-400" : "text-slate-400"}`}>Alerts</span>
-                                    </div>
-                                </div>
-                            </div>
-                            {expandedSection === "bloat" ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-                        </div>
-                    </div>
-
-                    {/* Unused Indexes Card */}
-                    <div
-                        onClick={() => setExpandedSection(expandedSection === "indexes" ? null : "indexes")}
-                        className={`${cardClass} cursor-pointer hover:ring-2 ring-blue-500/20 transition-all ${expandedSection === "indexes" ? "ring-2 ring-blue-500" : ""} group`}
-                    >
-                        <div className="p-4 flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className={`p-2 rounded-lg transition-colors ${isDark ? "bg-yellow-500/10 group-hover:bg-yellow-500/20" : "bg-yellow-50 group-hover:bg-yellow-100"}`}>
-                                    <FileX className={`w-5 h-5 ${isDark ? "text-yellow-400" : "text-yellow-500"}`} />
-                                </div>
-                                <div>
-                                    <p className={`text-xs font-bold uppercase tracking-wider ${isDark ? "text-slate-500" : "text-slate-400"}`}>Unused Indexes</p>
-                                    <div className="flex items-baseline gap-1">
-                                        <span className={`text-xl font-bold ${result.summary.total_unused_indexes > 0 ? "text-yellow-600" : isDark ? "text-white" : "text-slate-800"}`}>
-                                            {result.summary.total_unused_indexes}
-                                        </span>
-                                        <span className={`text-xs ${isDark ? "text-slate-400" : "text-slate-400"}`}>Candidates</span>
-                                    </div>
-                                </div>
-                            </div>
-                            {expandedSection === "indexes" ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-                        </div>
-                    </div>
-
-                    {/* Config Card */}
-                    <div
-                        onClick={() => setExpandedSection(expandedSection === "config" ? null : "config")}
-                        className={`${cardClass} cursor-pointer hover:ring-2 ring-blue-500/20 transition-all ${expandedSection === "config" ? "ring-2 ring-blue-500" : ""} group`}
-                    >
-                        <div className="p-4 flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className={`p-2 rounded-lg transition-colors ${isDark ? "bg-blue-500/10 group-hover:bg-blue-500/20" : "bg-blue-50 group-hover:bg-blue-100"}`}>
-                                    <Settings className={`w-5 h-5 ${isDark ? "text-blue-400" : "text-blue-500"}`} />
-                                </div>
-                                <div>
-                                    <p className={`text-xs font-bold uppercase tracking-wider ${isDark ? "text-slate-500" : "text-slate-400"}`}>Config Checks</p>
-                                    <div className="flex items-baseline gap-1">
-                                        <span className={`text-xl font-bold ${result.summary.total_config_issues > 0 ? "text-blue-500" : isDark ? "text-white" : "text-slate-800"}`}>
-                                            {result.summary.total_config_issues}
-                                        </span>
-                                        <span className={`text-xs ${isDark ? "text-slate-400" : "text-slate-400"}`}>Notices</span>
-                                    </div>
-                                </div>
-                            </div>
-                            {expandedSection === "config" ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Drill-down View */}
-            {expandedSection && result && (
-                <div className={`${cardClass} animate-in fade-in slide-in-from-top-4 duration-300 p-5`}>
-                    {/* Reuse existing logic for expanded view content but polished - kept logic same for brevity in this replace but imagine cleaner headers */}
-                    <div className="flex items-center justify-between mb-4">
-                        <h3 className={`font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
-                            {expandedSection === "bloat" && "Table Bloat Analysis"}
-                            {expandedSection === "indexes" && "Unused Index Candidates"}
-                            {expandedSection === "config" && "Configuration Review"}
-                        </h3>
-                        <button onClick={() => setExpandedSection(null)} className={`text-xs hover:underline ${isDark ? "text-slate-500" : "text-slate-400"}`}>Close</button>
-                    </div>
-                    {/* Content rendering logic remains similar to previous version basically */}
-                    <div className="grid grid-cols-1 gap-3 max-h-[500px] overflow-y-auto custom-scrollbar">
-                        {expandedSection === "bloat" && result.table_bloat.issues.map((issue, idx) => (
-                            <div key={idx} className={`p-4 rounded-lg border ${isDark ? "bg-slate-900/30 border-slate-700" : "bg-slate-50 border-slate-200"}`}>
-                                <div className="flex justify-between items-start">
-                                    <div>
-                                        <p className="font-mono text-sm font-bold text-blue-500">{issue.schema}.{issue.table}</p>
-                                        <p className={`text-xs mt-1 ${isDark ? "text-slate-400" : "text-slate-500"}`}>Dead Ratio: <span className={issue.dead_ratio > 20 ? "text-red-500 font-bold" : ""}>{issue.dead_ratio}%</span></p>
-                                    </div>
-                                    <span className={`text-[10px] uppercase font-bold px-2 py-1 rounded ${getSeverityColor(issue.severity)}`}>{issue.severity}</span>
-                                </div>
-                                <div className={`mt-2 p-2 rounded text-xs font-mono font-medium ${isDark ? "bg-black/20 text-slate-300" : "bg-white border text-slate-600"}`}>
-                                    {issue.recommendation}
-                                </div>
-                            </div>
-                        ))}
-                        {expandedSection === "indexes" && result.index_bloat.unused_indexes.map((issue, idx) => (
-                            <div key={idx} className={`p-4 rounded-lg border ${isDark ? "bg-slate-900/30 border-slate-700" : "bg-slate-50 border-slate-200"}`}>
-                                <div className="flex justify-between items-start">
-                                    <div>
-                                        <p className="font-mono text-sm font-bold text-yellow-500">{issue.index}</p>
-                                        <p className={`text-xs mt-1 ${isDark ? "text-slate-400" : "text-slate-500"}`}>Size: {issue.size} • Scans: 0</p>
-                                    </div>
-                                    <button onClick={() => setShowSqlModal(issue.recommendation)} className="text-xs bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600 transition">Drop</button>
-                                </div>
-                            </div>
-                        ))}
-                        {expandedSection === "config" && result.config_issues.issues.map((issue, idx) => (
-                            <div key={idx} className={`p-4 rounded-lg border ${isDark ? "bg-slate-900/30 border-slate-700" : "bg-slate-50 border-slate-200"}`}>
-                                <div className="flex justify-between items-start mb-2">
-                                    <div>
-                                        <p className={`font-bold text-sm ${isDark ? "text-white" : "text-slate-900"}`}>{issue.setting}</p>
-                                        <p className="text-xs text-red-500 mt-0.5">{issue.issue}</p>
-                                    </div>
-                                    <span className={`text-[10px] font-mono ${isDark ? "text-slate-400" : "text-slate-500"}`}>Current: {issue.current_value}</span>
-                                </div>
-                                <div className={`relative group mt-3 p-3 rounded-lg border ${isDark ? "bg-black/40 border-slate-700" : "bg-slate-100 border-slate-200"}`}>
-                                    <div className="flex items-center justify-between mb-2">
-                                        <span className="text-[10px] uppercase font-bold text-blue-500">Fix SQL</span>
-                                        <button
-                                            onClick={() => {
-                                                const sql = generateConfigSql(issue.setting, issue.recommendation);
-                                                navigator.clipboard.writeText(sql);
-                                                toast.success("SQL copied to clipboard");
-                                            }}
-                                            className="p-1.5 rounded-md hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
-                                            title="Copy SQL"
-                                        >
-                                            <Clipboard className="w-3.5 h-3.5" />
-                                        </button>
-                                    </div>
-                                    <pre className="text-[11px] font-mono text-slate-400 overflow-x-auto">
-                                        {generateConfigSql(issue.setting, issue.recommendation)}
-                                    </pre>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
+            {/* SQL Modal/History Drawer below */}
 
             {/* History Modal/Drawer */}
             {showHistory && (
@@ -545,7 +419,7 @@ export function HealthDoctor() {
                                         <div className="flex gap-2 text-[10px] opacity-60 uppercase font-bold">
                                             <span>{scan.issues.length} Issues</span>
                                             <span>•</span>
-                                            <span>{scan.summary.total_bloated_tables} Bloat</span>
+                                            <span>{scan.summary?.total_bloated_tables || 0} Bloat</span>
                                         </div>
                                     </div>
                                 ))

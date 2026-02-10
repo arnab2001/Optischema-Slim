@@ -14,7 +14,7 @@ interface UseWebSocketOptions {
 }
 
 export function useWebSocket({
-  url = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080/ws',
+  url = process.env.NEXT_PUBLIC_WS_URL || (typeof window !== 'undefined' ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws` : 'ws://localhost:8080/ws'),
   onMessage,
   onError,
   onOpen,

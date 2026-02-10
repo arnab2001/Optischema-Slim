@@ -10,7 +10,6 @@ import { useAppStore } from "@/store/appStore";
 import { QueryMetric } from "@/lib/dashboard-math";
 import Link from "next/link";
 import { ArrowUpRight, Search, X, ChevronDown, ChevronUp } from "lucide-react";
-import { HealthPanel } from "@/components/health/health-panel";
 import { ChartsRow } from "@/components/dashboard/charts-row";
 
 export default function DashboardPage() {
@@ -36,7 +35,7 @@ export default function DashboardPage() {
     return false;
   });
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
 
   const fetchData = async () => {
     if (!isConnected) return;
@@ -158,10 +157,10 @@ export default function DashboardPage() {
     <AppShell>
       <div className="space-y-4">
         {/* Charts Row (Collapsible) */}
-        <div className={`rounded-xl border overflow-hidden transition-all duration-300 ${isDark ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200"}`}>
+        <div className={`rounded-xl border overflow-hidden transition-all duration-300 ${isDark ? "bg-slate-800/50 border-slate-700/50" : "bg-white border-slate-200"}`}>
           <button
             onClick={() => setShowCharts(!showCharts)}
-            className={`w-full px-4 py-2 flex items-center justify-between text-[10px] uppercase tracking-widest font-bold border-b transition-colors ${isDark ? "border-slate-700 hover:bg-slate-700/50 text-slate-400" : "border-slate-100 hover:bg-slate-50 text-slate-500"
+            className={`w-full px-4 py-2 flex items-center justify-between text-[10px] uppercase tracking-widest font-bold border-b transition-colors ${isDark ? "border-slate-700/50 hover:bg-slate-700/50 text-slate-400" : "border-slate-100 hover:bg-slate-50 text-slate-500"
               }`}
           >
             <div className="flex items-center gap-2">
@@ -171,13 +170,13 @@ export default function DashboardPage() {
             {showCharts ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
           </button>
 
-          <div className={`transition-all duration-500 ease-in-out ${showCharts ? "max-h-[500px] opacity-100 p-4" : "max-h-0 opacity-0"}`}>
+          <div className={`transition-all duration-500 ease-in-out ${showCharts ? "max-h-[500px] opacity-100 p-3" : "max-h-0 opacity-0"}`}>
             <ChartsRow metrics={metrics} />
           </div>
         </div>
 
         {/* Dense Header & Filters */}
-        <div className={`flex flex-col xl:flex-row xl:items-center justify-between gap-4 p-4 rounded-xl border ${isDark ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200"}`}>
+        <div className={`flex flex-col xl:flex-row xl:items-center justify-between gap-4 p-3 rounded-xl border ${isDark ? "bg-slate-800/50 border-slate-700/50" : "bg-white border-slate-200"}`}>
           {/* Left: Title & Quick Stats */}
           <div className="flex items-center gap-4">
             <div>
@@ -189,7 +188,7 @@ export default function DashboardPage() {
                   Showing {filteredMetrics.length} / {totalCount} queries
                 </span>
                 <span className={`${isDark ? "text-slate-600" : "text-slate-300"}`}>|</span>
-                <span className={isDark ? "text-slate-500" : "text-slate-400"}>
+                <span className={`font-mono tabular-nums ${isDark ? "text-slate-500" : "text-slate-400"}`}>
                   {totalDbTime.toFixed(0)}ms total DB time
                 </span>
               </div>

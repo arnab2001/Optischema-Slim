@@ -14,65 +14,39 @@ Focus on safety and high-impact changes only.
 6. ACTIONS: If you suggest a fix, set category to "INDEX" or "REWRITE". Use "ADVISORY" only as a last resort.
 
 === CONTEXT ===
-TARGET QUERY: INSERT INTO golden.orders (user_id, amount, created_at)
-SELECT 
-    floor(random() * $1) + $2,
-    (random() * $3)::decimal(10,2),
-    now() - (random() * interval $4)
-FROM generate_series($5, $6)
-ON CONFLICT DO NOTHING
+TARGET QUERY: SELECT "UserSessionHistoryEntity"."id" AS "UserSessionHistoryEntity_id", "UserSessionHistoryEntity"."user_id" AS "UserSessionHistoryEntity_user_id", "UserSessionHistoryEntity"."session_id" AS "UserSessionHistoryEntity_session_id", "UserSessionHistoryEntity"."start_time" AS "UserSessionHistoryEntity_start_time", "UserSessionHistoryEntity"."end_time" AS "UserSessionHistoryEntity_end_time", "UserSessionHistoryEntity"."created_at" AS "UserSessionHistoryEntity_created_at", "UserSessionHistoryEntity"."updated_at" AS "UserSessionHistoryEntity_updated_at", "UserSessionHistoryEntity"."app_id" AS "UserSessionHistoryEntity_app_id" FROM "usm-auth"."user_session_history" "UserSessionHistoryEntity" WHERE (("UserSessionHistoryEntity"."user_id" = $1))
 
 === DATABASE STATS ===
-Table: golden.orders (3,999,966 rows)
-Columns: id (integer), user_id (integer), amount (numeric), created_at (timestamp without time zone)
-Indexes: orders_pkey (CREATE UNIQUE INDEX orders_pkey ON golden.orders USING btree (id))
-
-
-
-Table: GENERATE_SERIES($5, $6) (0 rows)
+Table: usm-auth.user_session_history AS UserSessionHistoryEntity (0 rows)
 Columns: 
 Indexes: 
 
 
 === EXECUTION PLAN ===
-Total Cost: 0.6
+Total Cost: 38.39
 Plan Details: {
-  "Node Type": "ModifyTable",
-  "Operation": "Insert",
+  "Node Type": "Bitmap Heap Scan",
   "Parallel Aware": false,
   "Async Capable": false,
-  "Relation Name": "orders",
-  "Alias": "orders",
-  "Startup Cost": 0.0,
-  "Total Cost": 0.6,
-  "Plan Rows": 0,
-  "Plan Width": 0,
-  "Conflict Resolution": "NOTHING",
+  "Relation Name": "user_session_history",
+  "Alias": "UserSessionHistoryEntity",
+  "Startup Cost": 4.11,
+  "Total Cost": 38.39,
+  "Plan Rows": 9,
+  "Plan Width": 104,
+  "Recheck Cond": "(user_id = '00000000-0000-0000-0000-000000000000'::uuid)",
   "Plans": [
     {
-      "Node Type": "Subquery Scan",
+      "Node Type": "Bitmap Index Scan",
       "Parent Relationship": "Outer",
       "Parallel Aware": false,
       "Async Capable": false,
-      "Alias": "*SELECT*",
+      "Index Name": "<14498>btree_usm-auth_user_session_history_user_id",
       "Startup Cost": 0.0,
-      "Total Cost": 0.6,
-      "Plan Rows": 10,
-      "Plan Width": 32,
-      "Plans": [
-        {
-          "Node Type": "Function Scan",
-          "Parent Relationship": "Subquery",
-          "Parallel Aware": false,
-          "Async Capable": false,
-          "Function Name": "generate_series",
-          "Alias": "generate_series",
-          "Startup Cost": 0.0,
-          "Total Cost": 0.4,
-          "Plan Rows": 10,
-          "Plan Width": 32
-        }
-      ]
+      "Total Cost": 4.11,
+      "Plan Rows": 9,
+      "Plan Width": 0,
+      "Index Cond": "(user_id = '00000000-0000-0000-0000-000000000000'::uuid)"
     }
   ]
 }

@@ -13,11 +13,29 @@ from cryptography.fernet import Fernet
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = os.path.join(os.path.dirname(__file__), 'optischema.db')
+# Database path configuration
+# Use /app/data/optischema.db as default if data directory exists (for Docker persistence)
+DEFAULT_DB_DIR = os.path.join(os.path.dirname(__file__), 'data')
+if not os.path.exists(DEFAULT_DB_DIR) and os.access(os.path.dirname(__file__), os.W_OK):
+    try:
+        os.makedirs(DEFAULT_DB_DIR, exist_ok=True)
+    except Exception:
+        DEFAULT_DB_DIR = os.path.dirname(__file__)
+
+DB_PATH = os.environ.get('DATABASE_PATH', os.path.join(DEFAULT_DB_DIR, 'optischema.db'))
 
 async def init_db():
     """Initialize the SQLite database with required tables."""
     async with aiosqlite.connect(DB_PATH) as db:
+        # Enable WAL mode for better concurrency (allows concurrent reads during writes)
+        await db.execute("PRAGMA journal_mode=WAL")
+        
+        # Set busy timeout to 5 seconds (prevents immediate SQLITE_BUSY errors)
+        await db.execute("PRAGMA busy_timeout=5000")
+        
+        # Optimize for local development (faster writes, acceptable risk for local-only tool)
+        await db.execute("PRAGMA synchronous=NORMAL")
+        
         await db.execute("""
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
@@ -81,7 +99,7 @@ async def init_db():
             )
         """)
         await db.commit()
-    logger.info(f"Initialized SQLite database at {DB_PATH}")
+    logger.info(f"Initialized SQLite database at {DB_PATH} with WAL mode enabled")
 
 async def get_setting(key: str) -> Optional[Any]:
     """Get a setting value by key."""

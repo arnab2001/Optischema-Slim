@@ -7,7 +7,15 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 
-from storage import get_all_settings, set_all_settings, get_saved_optimizations, delete_saved_optimization
+from storage import (
+    get_all_settings, 
+    set_all_settings, 
+    get_saved_optimizations, 
+    delete_saved_optimization,
+    get_setting,
+    set_setting
+)
+from models import HealthThresholds
 
 router = APIRouter(
     prefix="/api",
@@ -87,4 +95,18 @@ async def get_saved():
 async def delete_saved(opt_id: str):
     """Delete a saved optimization."""
     await delete_saved_optimization(opt_id)
+    return {"success": True}
+
+@router.get("/health-thresholds", response_model=HealthThresholds)
+async def get_health_thresholds():
+    """Get health diagnostic thresholds."""
+    raw = await get_setting("health_thresholds")
+    if not raw:
+        return HealthThresholds()
+    return HealthThresholds(**raw)
+
+@router.post("/health-thresholds")
+async def update_health_thresholds(config: HealthThresholds):
+    """Update health diagnostic thresholds."""
+    await set_setting("health_thresholds", config.model_dump())
     return {"success": True}

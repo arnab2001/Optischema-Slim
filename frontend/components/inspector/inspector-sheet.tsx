@@ -40,7 +40,7 @@ export function InspectorSheet({ query, isOpen, onClose }: InspectorSheetProps) 
     const [verifying, setVerifying] = useState(false);
     const [verificationResult, setVerificationResult] = useState<any>(null);
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
 
     // Reset state when query changes
     useEffect(() => {
@@ -174,28 +174,41 @@ export function InspectorSheet({ query, isOpen, onClose }: InspectorSheetProps) 
             <div className={`fixed right-0 top-0 h-full w-full max-w-2xl z-50 shadow-2xl transform transition-transform duration-300 ${isOpen ? "translate-x-0" : "translate-x-full"
                 } ${isDark ? "bg-slate-900" : "bg-white"}`}>
                 {/* Header */}
-                <div className={`h-14 flex items-center justify-between px-6 border-b ${isDark ? "border-slate-700" : "border-slate-200"
+                <div className={`h-16 flex items-center justify-between px-6 border-b ${isDark ? "border-slate-800" : "border-slate-200"
                     }`}>
-                    <div className="flex items-center gap-3">
-                        <span className={`font-mono text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                            #{query.queryid.substring(0, 8)}
-                        </span>
+                    <div className="flex items-center gap-4">
+                        <div className="flex flex-col">
+                            <span className={`text-[10px] uppercase font-bold tracking-[0.2em] ${isDark ? "text-slate-500" : "text-slate-400"}`}>Query Inspector</span>
+                            <span className={`font-mono text-xl font-black ${isDark ? "text-white" : "text-slate-900"}`}>
+                                QID:{query.queryid.substring(0, 12).toUpperCase()}
+                            </span>
+                        </div>
+                        <button
+                            onClick={() => copyToClipboard(query.queryid, "ID")}
+                            className={`p-1.5 rounded hover:bg-opacity-10 transition-colors ${isDark ? "text-slate-400 hover:bg-white" : "text-slate-500 hover:bg-black"
+                                }`}
+                            title="Copy Query ID"
+                        >
+                            <Copy className="w-3.5 h-3.5" />
+                        </button>
+                    </div>
+                    <div className="flex items-center gap-2">
                         <button
                             onClick={() => copyToClipboard(window.location.href, "Link")}
-                            className={`p-1.5 rounded hover:bg-opacity-10 ${isDark ? "text-slate-400 hover:bg-white" : "text-slate-500 hover:bg-black"
+                            className={`p-2 rounded-lg hover:bg-opacity-10 transition-colors ${isDark ? "text-slate-400 hover:bg-white" : "text-slate-500 hover:bg-black"
                                 }`}
                             title="Copy link"
                         >
-                            <ExternalLink className="w-4 h-4" />
+                            <ExternalLink className="w-5 h-5" />
+                        </button>
+                        <button
+                            onClick={onClose}
+                            className={`p-2 rounded-lg ${isDark ? "text-slate-400 hover:bg-slate-800" : "text-slate-500 hover:bg-slate-100"
+                                }`}
+                        >
+                            <X className="w-5 h-5" />
                         </button>
                     </div>
-                    <button
-                        onClick={onClose}
-                        className={`p-2 rounded-lg ${isDark ? "text-slate-400 hover:bg-slate-800" : "text-slate-500 hover:bg-slate-100"
-                            }`}
-                    >
-                        <X className="w-5 h-5" />
-                    </button>
                 </div>
 
                 {/* Tabs */}
@@ -424,24 +437,27 @@ export function InspectorSheet({ query, isOpen, onClose }: InspectorSheetProps) 
                                         <div className={`text-[10px] uppercase font-bold tracking-widest ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
                                             Sandbox Engine: <span className="text-blue-500">HypoPG</span>
                                         </div>
-                                        <button
-                                            onClick={verifyImpact}
-                                            disabled={verifying}
-                                            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider text-white transition-all transform active:scale-95 disabled:opacity-50 ${verifying ? "bg-slate-600" : "bg-blue-600 hover:bg-blue-500 shadow-lg shadow-blue-500/20"
-                                                }`}
-                                        >
-                                            {verifying ? (
-                                                <>
-                                                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                                    Verifying...
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Play className="w-3 h-3 fill-current" />
-                                                    Verify Impact
-                                                </>
-                                            )}
-                                        </button>
+                                        {/* Hide if already verified automatically */}
+                                        {!(analysisResult.verification_status === "verified" && !verificationResult) && (
+                                            <button
+                                                onClick={verifyImpact}
+                                                disabled={verifying}
+                                                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider text-white transition-all transform active:scale-95 disabled:opacity-50 ${verifying ? "bg-slate-600" : "bg-blue-600 hover:bg-blue-500 shadow-lg shadow-blue-500/20"
+                                                    }`}
+                                            >
+                                                {verifying ? (
+                                                    <>
+                                                        <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                                        Verifying...
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Play className="w-3 h-3 fill-current" />
+                                                        Verify Impact
+                                                    </>
+                                                )}
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             )}
@@ -449,11 +465,20 @@ export function InspectorSheet({ query, isOpen, onClose }: InspectorSheetProps) 
                     )}
 
                     {activeTab === "plan" && (
-                        <div className="p-4">
+                        <div className="p-0 h-full">
                             {analysisResult?.original_plan ? (
-                                <div className={`rounded-lg p-4 border overflow-x-auto ${isDark ? "bg-slate-900 border-slate-700" : "bg-white border-slate-200"}`}>
-                                    <h3 className={`text-sm font-semibold mb-4 ${isDark ? "text-slate-300" : "text-slate-600"}`}>Execution Plan</h3>
-                                    <PlanNode node={analysisResult.original_plan} />
+                                <div className={`h-full overflow-auto bg-black border-t ${isDark ? "border-slate-800" : "border-slate-200"}`}>
+                                    <div className="p-4">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h3 className="text-[10px] uppercase font-bold tracking-widest text-slate-500">Execution Plan</h3>
+                                            <div className="flex items-center gap-4 text-[10px] font-mono text-slate-500">
+                                                <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Read</div>
+                                                <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-yellow-500" /> Join</div>
+                                                <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-purple-500" /> Sort</div>
+                                            </div>
+                                        </div>
+                                        <PlanNode node={analysisResult.original_plan} />
+                                    </div>
                                 </div>
                             ) : (
                                 <div className={`text-center py-12 ${isDark ? "text-slate-500" : "text-slate-400"}`}>

@@ -18,7 +18,7 @@ export function ConnectionManager() {
     } = useConnectionStore();
 
     const [inputString, setInputString] = useState("");
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
 
     const normalizeConnectionString = (raw: string) => {
         const trimmed = raw.trim();
