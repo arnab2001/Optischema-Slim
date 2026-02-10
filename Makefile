@@ -21,7 +21,7 @@ dev-backend: ## Run Backend locally (FastAPI)
 	cd backend && ./venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8080 --reload
 
 dev-frontend: ## Run Frontend locally (Next.js)
-	@echo "🚀 Starting Frontend on http://localhost:3000..."
+	@echo "🚀 Starting Frontend on http://localhost:5173..."
 	cd frontend && npm run dev
 
 dev: ## Run both Backend and Frontend (requires make -j)
