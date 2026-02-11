@@ -307,7 +307,7 @@ export default function LandingPage() {
           <div className="relative group perspective-1000">
             <div className="absolute inset-0 bg-gradient-to-tr from-orange-500/20 to-rose-500/20 rounded-2xl blur-xl group-hover:blur-2xl transition-all duration-500 opacity-60"></div>
             <img
-              src="mockups/feature-slow-query.png"
+              src="https://raw.githubusercontent.com/arnab2001/Optischema-Slim/main/mockups/feature-slow-query.png"
               alt="Slow Query Analysis"
               className="relative rounded-2xl shadow-2xl border border-slate-200 transform transition-transform duration-500 group-hover:rotate-y-2 group-hover:scale-[1.02]"
             />
@@ -318,7 +318,7 @@ export default function LandingPage() {
           <div className="order-2 lg:order-1 relative group perspective-1000">
             <div className="absolute inset-0 bg-gradient-to-bl from-blue-500/20 to-indigo-500/20 rounded-2xl blur-xl group-hover:blur-2xl transition-all duration-500 opacity-60"></div>
             <img
-              src="mockups/feature-index.png"
+              src="https://raw.githubusercontent.com/arnab2001/Optischema-Slim/main/mockups/feature-index.png"
               alt="Hypothetical Indexing"
               className="relative rounded-2xl shadow-2xl border border-slate-200 transform transition-transform duration-500 group-hover:-rotate-y-2 group-hover:scale-[1.02]"
             />
@@ -379,7 +379,7 @@ export default function LandingPage() {
           <div className="relative group perspective-1000">
             <div className="absolute inset-0 bg-gradient-to-tr from-purple-500/20 to-pink-500/20 rounded-2xl blur-xl group-hover:blur-2xl transition-all duration-500 opacity-60"></div>
             <img
-              src="mockups/feature-byom.png"
+              src="https://raw.githubusercontent.com/arnab2001/Optischema-Slim/main/mockups/feature-byom.png"
               alt="Bring Your Own Model"
               className="relative rounded-2xl shadow-2xl border border-slate-200 transform transition-transform duration-500 group-hover:rotate-y-2 group-hover:scale-[1.02]"
             />
