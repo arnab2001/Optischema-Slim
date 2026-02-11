@@ -1,7 +1,7 @@
 <div align="center">
   <img src="frontend/public/image.png" alt="OptiSchema Logo" height="120">
   <p><strong>The Local-First Doctor for your PostgreSQL.</strong></p>
-<br/> <a href="https://www.producthunt.com/products/optischema-slim?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-optischema-slim" target="_blank" rel="noopener noreferrer"><img alt="OptiSchema Slim - Local-first AI PostgreSQL tuning with ‘what-if’ indexes | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1077195&amp;theme=neutral&amp;t=1770744233923"></a><br/>
+<br/> <a href="https://www.producthunt.com/products/optischema-slim?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-optischema-slim" target="_blank" rel="noopener noreferrer"><img alt="OptiSchema Slim - Local-first AI PostgreSQL tuning with 'what-if' indexes | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1077195&amp;theme=neutral&amp;t=1770744233923"></a><br/>
   <a href="https://github.com/arnab2001/Optischema-Slim/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License">
   </a>
@@ -12,52 +12,46 @@
     <img src="https://img.shields.io/badge/Status-Alpha-orange" alt="Status">
   </a>
   <a href="#">
-    <img src="https://img.shields.io/badge/WIP-Work%20InProgress-yellow" alt="Work in Progress">
-  </a>
-  <a href="#">
     <img src="https://img.shields.io/badge/Privacy-100%25-green" alt="Privacy">
-  </a>
-  <a href="#">
-    <img src="https://img.shields.io/badge/Status-Private_Alpha-red" alt="Status">
   </a>
 </div>
 
 
 <!-- <img src="docs/screenshot.png" alt="OptiSchema Dashboard" width="100%" style="border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.2);"> -->
 
+## 🎯 All-In-One Docker Image
 
-**🚧 We are currently finalizing the v1.0 Docker Image.**
-Building from source works, but it requires manual config.
+OptiSchema Slim now ships as a **single ~390MB Docker image** containing both the UI and API.
 
-**[👉 Join the Waitlist](https://arnab2001.github.io/Optischema-Slim/)** to get the polished, zero-config Docker image when it drops.
+**No separate frontend container. No Node.js runtime. One pull, one run.**
 
 ## Why OptiSchema Slim?
 
 *   **Privacy First**: Your schema and queries never leave localhost.
 *   **Simulation Engine**: Verify index suggestions with HypoPG before touching production.
-*   **Model Agnostic**: Use Ollama (SQLCoder) locally, or bring your own OpenAI/DeepSeek keys.
+*   **Model Agnostic**: Use Ollama (SQLCoder) locally, or bring your own OpenAI/Gemini/DeepSeek keys.
+*   **All-In-One**: Single container, single port (8080), built-in static UI serving.
 
-## Quick Start (30 Seconds)
+## ⚡ Quick Start (10 Seconds)
 
 ```bash
-# 1. Clone the repo
-git clone https://github.com/arnab2001/Optischema-Slim.git
-
-# 2. Run with Docker
+# Pull and run
 docker-compose up -d
 
-# 3. Open Dashboard
+# Open your browser
 # http://localhost:8080
 ```
 
-## Dev Setup (Separate FE/BE)
+That's it. The dashboard loads on port 8080.
+
+## 🛠️ Development (Local Source Build)
 
 ```bash
-# Run backend + Vite dev server in separate containers
-docker-compose -f docker-compose.dev.yml up --build
+# Backend (FastAPI)
+make dev-backend
 
-# Frontend (Vite) -> http://localhost:5173
-# Backend (FastAPI) -> http://localhost:8080
+# Frontend (Next.js)
+make dev-frontend
 ```
 
 ## Features

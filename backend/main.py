@@ -84,27 +84,6 @@ app.include_router(settings_router.router)
 app.include_router(health.router)
 app.include_router(ai_analysis.router)
 
-# Mount static files for the frontend (All-In-One image support)
-from fastapi.staticfiles import StaticFiles
-import os
-
-# Create static directory if it doesn't exist (only for local dev, in Docker it's copied)
-static_dir = os.path.join(os.path.dirname(__file__), "static")
-if os.path.exists(static_dir):
-    app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
-
-    # Catch-all route for SPA routing
-    # This ensures that refreshing on /dashboard or other routes serves index.html
-    @app.exception_handler(404)
-    async def spa_fallback(request, exc):
-        if not request.url.path.startswith("/api") and not request.url.path.startswith("/health"):
-            # Try to serve index.html from the root of the static directory
-            index_path = os.path.join(static_dir, "index.html")
-            if os.path.exists(index_path):
-                from fastapi.responses import FileResponse
-                return FileResponse(index_path)
-        return await http_exception_handler(request, exc)
-
 
 @app.get("/api")
 async def api_info():
@@ -177,6 +156,28 @@ async def http_exception_handler(request, exc):
             "error": str(exc)
         }
     )
+
+
+# Mount static files for the frontend (All-In-One image support)
+# IMPORTANT: This must be done AFTER all API routes are defined
+from fastapi.staticfiles import StaticFiles
+import os
+
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_dir):
+    app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
+
+    # Catch-all route for SPA routing
+    # This ensures that refreshing on /dashboard or other routes serves index.html
+    @app.exception_handler(404)
+    async def spa_fallback(request, exc):
+        if not request.url.path.startswith("/api"):
+            # Try to serve index.html from the root of the static directory
+            index_path = os.path.join(static_dir, "index.html")
+            if os.path.exists(index_path):
+                from fastapi.responses import FileResponse
+                return FileResponse(index_path)
+        return await http_exception_handler(request, exc)
 
 
 if __name__ == "__main__":

@@ -14,7 +14,7 @@ services:
       - ENVIRONMENT=production
       - DEBUG=false
     ports:
-      - "8080:8080"
+      - "8099:8080"
     volumes:
       - optischema_data:/app/data
     extra_hosts:

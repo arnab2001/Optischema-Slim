@@ -40,17 +40,7 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
           cd frontend
-          npm run build
-
-      - name: Promote landing page to root
-        run: |
-          cd frontend/dist
-          if [ ! -f "landing.html" ]; then
-            echo "landing.html missing from Vite build output"
-            exit 1
-          fi
-          cp landing.html index.html
-          cp index.html 404.html
+          npm run build:landing
 
       - name: Setup Pages
         uses: actions/configure-pages@v4

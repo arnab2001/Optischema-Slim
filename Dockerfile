@@ -10,15 +10,12 @@ RUN apk add --no-cache libc6-compat python3 make g++
 
 # Copy package files
 COPY frontend/package*.json ./
-RUN npm install
+RUN npm ci
 
 # Copy frontend source
 COPY frontend/ ./
 
-# EXCLUDE LANDING PAGE from build to reduce size and focus on the tool
-RUN rm -rf app/landing
-
-# Set environment for static build
+# Set environment for production build
 # Empty string means relative paths will be used for API calls
 ENV VITE_API_URL=""
 

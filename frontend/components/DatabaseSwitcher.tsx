@@ -85,7 +85,7 @@ export default function DatabaseSwitcher() {
   // Fetch saved connections
   const fetchSavedConnections = async () => {
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080'
+      const apiUrl = import.meta.env.VITE_API_URL || ''
       const response = await fetch(`${apiUrl}/api/connection/saved`)
       if (response.ok) {
         const data = await response.json()
@@ -268,7 +268,7 @@ export default function DatabaseSwitcher() {
       throw new Error("Could not extract password from connection. Please reconnect with your credentials.")
     }
 
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080'
+    const apiUrl = import.meta.env.VITE_API_URL || ''
     const savePayload = {
       name,
       host: extractedHost,
@@ -318,7 +318,7 @@ export default function DatabaseSwitcher() {
 
     setLoading(true)
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080'
+      const apiUrl = import.meta.env.VITE_API_URL || ''
       console.log('Switching to connection ID:', connectionId)
 
       const response = await fetch(`${apiUrl}/api/connection/switch/${connectionId}`, {
@@ -367,7 +367,7 @@ export default function DatabaseSwitcher() {
     }
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080'
+      const apiUrl = import.meta.env.VITE_API_URL || ''
       const response = await fetch(`${apiUrl}/api/connection/saved/${connectionId}`, {
         method: 'DELETE'
       })
