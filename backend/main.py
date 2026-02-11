@@ -37,8 +37,17 @@ async def lifespan(app: FastAPI):
     # Initialize SQLite database
     await init_db()
     
-    # Target database connection will be established when user provides credentials
-    logger.info("Target database connection will be established when user provides credentials")
+    # Auto-connect if DATABASE_URL is provided (e.g. for Quickstart Demo)
+    if settings.database_url:
+        logger.info(f"Auto-connecting to database from environment: {settings.database_url}")
+        success, error = await connection_manager.connect(settings.database_url)
+        if success:
+            logger.info("Successfully auto-connected to target database")
+        else:
+            logger.error(f"Failed to auto-connect to database: {error}")
+    else:
+        # Target database connection will be established when user provides credentials
+        logger.info("Target database connection will be established when user provides credentials")
     
     logger.info("OptiSchema backend started successfully")
     
@@ -104,7 +113,10 @@ async def health_check():
         db_healthy = await connection_manager.check_connection_health()
         
         # Check AI config
-        ai_healthy = bool(settings.openai_api_key or settings.gemini_api_key or settings.deepseek_api_key)
+        if settings.llm_provider.lower() == "ollama":
+            ai_healthy = True
+        else:
+            ai_healthy = bool(settings.openai_api_key or settings.gemini_api_key or settings.deepseek_api_key)
         
         # Determine overall status
         status = "healthy" if db_healthy else "unhealthy"

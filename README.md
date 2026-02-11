@@ -32,17 +32,32 @@ OptiSchema Slim now ships as a **single ~390MB Docker image** containing both th
 *   **Model Agnostic**: Use Ollama (SQLCoder) locally, or bring your own OpenAI/Gemini/DeepSeek keys.
 *   **All-In-One**: Single container, single port (8080), built-in static UI serving.
 
-## ⚡ Quick Start (10 Seconds)
+### 🚀 Quickstart Guide
 
+**Option 1: The 10-Second Demo (Recommended)**
+Run an auto-configured environment with a "bad database" to see OptiSchema's analysis in action.
 ```bash
-# Pull and run
-docker-compose up -d
+# Clone the repo
+git clone https://github.com/arnab2001/Optischema-Slim.git
+cd Optischema-Slim
 
-# Open your browser
-# http://localhost:8080
+# Start the Demo
+docker compose -f docker-compose.demo.yml up --build
 ```
+*   **URL**: `http://localhost:8452`
+*   **Scenario**: Pre-loaded with slow queries and missing indexes.
 
-That's it. The dashboard loads on port 8080.
+**Option 2: Run with Your Database**
+Pull the official image and connect to your local Postgres.
+```bash
+# pulls ~390MB image
+docker pull arnab2001/optischema-slim:latest
+
+# run on port 8080
+docker run -p 8080:8080 arnab2001/optischema-slim:latest
+```
+*   **URL**: `http://localhost:8080`
+*   **Setup**: Enter your `postgres://` connection string in the UI.
 
 ## 🛠️ Development (Local Source Build)
 
@@ -92,6 +107,9 @@ The system follows a **Collect → Analyze → Simulate** pipeline designed for 
 3.  **To use Cloud Models**:
     *   Add your `OPENAI_API_KEY`, `GEMINI_API_KEY`, or `DEEPSEEK_API_KEY` to the `.env` file.
     *   Set `LLM_PROVIDER` accordingly (e.g., `openai`, `gemini`).
+
+4.  **Auto-Connection (Optional)**:
+    *   Set `DATABASE_URL=postgresql://user:pass@host:5432/db` to skip the connection screen on startup.
 
 </details>
 

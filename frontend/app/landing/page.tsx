@@ -387,6 +387,72 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Quickstart Guide Section */}
+      <section className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
+        <div className="text-center mb-12">
+          <h2 className="text-3xl font-bold text-slate-900 mb-4">Start optimizing.</h2>
+          <p className="text-slate-500 text-lg">Choose your preferred way to run OptiSchema.</p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+
+          {/* Card 1: Quickstart Demo */}
+          <div className="group relative bg-slate-900 rounded-2xl p-1 overflow-hidden shadow-2xl">
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-indigo-500 opacity-20 group-hover:opacity-30 transition-opacity"></div>
+            <div className="relative h-full bg-slate-900/90 backdrop-blur rounded-xl p-8 flex flex-col">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-blue-500/20 rounded-lg text-blue-400">
+                  <Zap className="w-6 h-6" />
+                </div>
+                <h3 className="text-xl font-bold text-white">Quickstart Demo</h3>
+              </div>
+              <p className="text-slate-400 mb-6 flex-1">
+                Spin up a complete environment with a "Bad Database" pre-loaded with slow queries.
+              </p>
+
+              <div className="bg-black/50 rounded-lg p-4 font-mono text-sm text-slate-300 border border-white/10 relative group/code">
+                <div className="flex gap-2 mb-2">
+                  <span className="text-slate-600">#</span>
+                  <span>Clone & Run</span>
+                </div>
+                <div className="space-y-1">
+                  <p><span className="text-purple-400">git</span> clone https://github.com/arnab/optischema</p>
+                  <p><span className="text-blue-400">docker</span> compose -f docker-compose.demo.yml up</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 2: Production / Docker Hub */}
+          <div className="group relative bg-white rounded-2xl p-1 overflow-hidden shadow-xl border border-slate-200">
+            <div className="absolute inset-0 bg-gradient-to-r from-emerald-500 to-teal-500 opacity-0 group-hover:opacity-5 transition-opacity"></div>
+            <div className="relative h-full bg-white rounded-xl p-8 flex flex-col">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-emerald-100 rounded-lg text-emerald-600">
+                  <Database className="w-6 h-6" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-900">Connect Your DB</h3>
+              </div>
+              <p className="text-slate-500 mb-6 flex-1">
+                Pull the official lightweight image and connect to your local Postgres instance.
+              </p>
+
+              <div className="bg-slate-50 rounded-lg p-4 font-mono text-sm text-slate-600 border border-slate-200 relative group/code">
+                <div className="flex gap-2 mb-2">
+                  <span className="text-slate-400">#</span>
+                  <span>Pull from Docker Hub</span>
+                </div>
+                <div className="space-y-1">
+                  <p><span className="text-blue-600">docker</span> pull arnab2001/optischema-slim</p>
+                  <p><span className="text-blue-600">docker</span> run -p 8080:8080 arnab2001/optischema-slim</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
       {/* Terminal Section */}
       <section className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
         <div className="text-center mb-12">
@@ -704,7 +770,7 @@ function DockerPullButton() {
   const handleCopy = () => {
     if (state !== 'idle') return
 
-    navigator.clipboard.writeText("docker pull arnab2001/optischema-slim:latest")
+    navigator.clipboard.writeText("docker run -p 8080:8080 arnab2001/optischema-slim:latest")
 
     // Start Animation Sequence
     setState('pulling')
@@ -752,9 +818,9 @@ function DockerPullButton() {
           <>
             <Database className="w-4 h-4 transition-transform group-hover:scale-110 duration-300" />
             <div className="flex flex-col items-start leading-none gap-0.5">
-              <span className="font-semibold text-sm">Docker Pull</span>
+              <span className="font-semibold text-sm">Docker Run</span>
               <span className="font-mono text-[10px] text-slate-400 group-hover:text-blue-600 transition-colors">
-                arnab2001/optischema-slim
+                docker run -p 8080:8080...
               </span>
             </div>
             <Copy className="w-3 h-3 text-slate-300 opacity-0 -ml-1 group-hover:opacity-100 group-hover:ml-0 transition-all duration-300" />
@@ -764,7 +830,7 @@ function DockerPullButton() {
         {state === 'pulling' && (
           <div className="w-full flex flex-col gap-1.5">
             <div className="flex justify-between items-center text-[10px] font-mono leading-none">
-              <span>Pulling layers...</span>
+              <span>Pulling image...</span>
               <span>{Math.round(progress)}%</span>
             </div>
             <div className="h-1.5 w-full bg-blue-100 rounded-full overflow-hidden">
@@ -774,7 +840,7 @@ function DockerPullButton() {
               />
             </div>
             <div className="text-[9px] font-mono text-slate-400 leading-none truncate">
-              db85... download complete
+              latest: pulling from library...
             </div>
           </div>
         )}
@@ -786,8 +852,8 @@ function DockerPullButton() {
               <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
             </div>
             <div className="flex flex-col items-start leading-none gap-0.5">
-              <span className="font-mono text-xs font-semibold">Extracting...</span>
-              <span className="font-mono text-[10px] opacity-70">sha256: verified</span>
+              <span className="font-mono text-xs font-semibold">Starting container...</span>
+              <span className="font-mono text-[10px] opacity-70">port 8080 ready</span>
             </div>
           </div>
         )}

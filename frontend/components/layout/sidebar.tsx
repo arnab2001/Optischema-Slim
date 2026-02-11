@@ -45,6 +45,7 @@ export function Sidebar() {
     const [activeConnectionId, setActiveConnectionId] = useState<number | null>(null);
     const [activeConnectionName, setActiveConnectionName] = useState<string | null>(null);
     const [switching, setSwitching] = useState(false);
+    const [aiReady, setAiReady] = useState(true); // Default true to avoid flash
 
     const isDark = theme === "dark";
 
@@ -73,6 +74,14 @@ export function Sidebar() {
                 } else {
                     setActiveConnectionName(null);
                 }
+            }
+
+            // Check AI Status for sidebar warning
+            const healthRes = await fetch(`${apiUrl}/api/health/check`);
+            if (healthRes.ok) {
+                const health = await healthRes.json();
+                // If openai field (ai_healthy) is false, show warning
+                setAiReady(health.openai);
             }
         } catch (error) {
             console.error("Failed to fetch connections:", error);
@@ -262,7 +271,7 @@ export function Sidebar() {
                             <Link
                                 key={item.href}
                                 to={item.href}
-                                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${isActive
+                                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors relative ${isActive
                                     ? isDark
                                         ? "bg-blue-600 text-white"
                                         : "bg-blue-50 text-blue-600"
@@ -274,6 +283,10 @@ export function Sidebar() {
                                 <Icon className="w-5 h-5 shrink-0" />
                                 {!isSidebarCollapsed && (
                                     <span className="text-sm font-medium">{item.label}</span>
+                                )}
+                                {/* Red Dot for Missing AI Config */}
+                                {item.label === "Settings" && !aiReady && (
+                                    <div className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-sm shadow-red-500/50" title="AI Provider Missing" />
                                 )}
                             </Link>
                         );

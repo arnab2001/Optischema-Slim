@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  # The "Bad" Database
+  demo-db:
+    build:
+      context: ./demo
+      dockerfile: Dockerfile
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=demo
+    volumes:
+      - ./demo/init.sql:/docker-entrypoint-initdb.d/init.sql
+    # Enable pg_stat_statements via command flags
+    command: postgres -c shared_preload_libraries=pg_stat_statements -c pg_stat_statements.track=all
+    ports:
+      - "5433:5432" # Expose on 5433 to avoid conflict with local postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # The OptiSchema App (Auto-Connected)
+  app:
+    build: .
+    ports:
+      - "8452:8080"
+    environment:
+      # Auto-connect to the demo database
+      - DATABASE_URL=postgresql://postgres:postgres@demo-db:5432/demo
+      
+      # Optional: AI Keys (User can provide via .env or pass them here)
+      # - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      demo-db:
+        condition: service_healthy

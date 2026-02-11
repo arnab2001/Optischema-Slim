@@ -5,9 +5,14 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
 export default function Home() {
-  const { isConnected, connectionString, disconnect } = useConnectionStore();
+  const { isConnected, connectionString, disconnect, syncStatus } = useConnectionStore();
   const navigate = useNavigate();
   const [step, setStep] = useState<"connect" | "check">("connect");
+
+  // Check backend connection status on mount (e.g. for Quickstart Demo)
+  useEffect(() => {
+    syncStatus();
+  }, [syncStatus]);
 
   // If already connected with a saved connection string, skip to extension check
   useEffect(() => {

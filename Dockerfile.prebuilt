@@ -1,29 +1,7 @@
-# --- Stage 1: Build Frontend (Vite) ---
-FROM node:20-alpine AS frontend-builder
-WORKDIR /app
+# Alternative Dockerfile that uses pre-built frontend
+# Use this if the regular build fails with esbuild crashes
 
-# Increase memory and disable esbuild's internal parallelism to avoid crashes
-ENV NODE_OPTIONS="--max-old-space-size=4096"
-ENV ESBUILD_BINARY_PATH=/usr/local/bin/esbuild
-
-# Install build dependencies
-RUN apk add --no-cache libc6-compat python3 make g++
-
-# Copy package files
-COPY frontend/package*.json ./
-RUN npm ci
-
-# Copy frontend source
-COPY frontend/ ./
-
-# Set environment for production build
-# Empty string means relative paths will be used for API calls
-ENV VITE_API_URL=""
-
-# Build static assets (generates 'dist' directory)
-RUN npm run build
-
-# --- Stage 2: Build Backend (Python Virtual Env) ---
+# --- Stage 1: Build Backend (Python Virtual Env) ---
 FROM python:3.11-slim AS backend-builder
 WORKDIR /app
 
@@ -60,9 +38,9 @@ RUN apt-get update && apt-get install -y \
 # Copy backend application code
 COPY backend/ .
 
-# Copy static frontend files to 'static' directory
-# FastAPI serves these via StaticFiles
-COPY --from=frontend-builder /app/dist ./static
+# Copy pre-built static frontend files
+# These were built locally before running Docker
+COPY frontend/dist ./static
 
 # Ensure data directory exists for SQLite persistence
 RUN mkdir -p /app/data

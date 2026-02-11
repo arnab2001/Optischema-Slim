@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     backend_host: str = Field(default="0.0.0.0", env="BACKEND_HOST")
     backend_port: int = Field(default=8080, env="BACKEND_PORT")
     backend_reload: bool = Field(default=True, env="BACKEND_RELOAD")
+    database_url: Optional[str] = Field(default=None, env="DATABASE_URL")
     
     # Environment Configuration
     environment: str = Field(default="development", env="ENVIRONMENT")
