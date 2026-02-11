@@ -698,39 +698,81 @@ function LiveBenchmarkPill() {
 }
 
 function DockerPullButton() {
-  const [copied, setCopied] = useState(false)
+  const [state, setState] = useState<'idle' | 'pulling' | 'extracting' | 'copied'>('idle')
 
   const handleCopy = () => {
+    if (state !== 'idle') return
+
     navigator.clipboard.writeText("docker pull arnab2001/optischema-slim:latest")
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+
+    // Start Animation Sequence
+    setState('pulling')
+
+    setTimeout(() => {
+      setState('extracting')
+    }, 800)
+
+    setTimeout(() => {
+      setState('copied')
+    }, 1800)
+
+    setTimeout(() => {
+      setState('idle')
+    }, 3500)
   }
 
   return (
     <button
       onClick={handleCopy}
-      className="group relative inline-flex h-12 items-center justify-center gap-3 overflow-hidden rounded-xl border border-slate-200 bg-white px-6 text-slate-600 shadow-sm transition-all duration-300 hover:border-blue-300 hover:text-slate-900 hover:shadow-md active:scale-95"
+      className={`group relative inline-flex h-12 items-center justify-center gap-3 overflow-hidden rounded-xl border transition-all duration-300 active:scale-95
+        ${state === 'idle' ? 'border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:text-slate-900 hover:shadow-md' : ''}
+        ${state === 'pulling' || state === 'extracting' ? 'border-blue-200 bg-slate-50 text-blue-600' : ''}
+        ${state === 'copied' ? 'border-green-200 bg-green-50 text-green-700' : ''}
+        min-w-[200px] px-6
+      `}
     >
-      <div className={`absolute inset-0 bg-slate-50 transition-opacity duration-300 ${copied ? 'opacity-100 bg-green-50' : 'opacity-0 group-hover:opacity-100'} `} />
-
       <div className="relative flex items-center gap-3">
-        {copied ? (
-          <Check className="w-4 h-4 text-green-600 animate-in zoom-in duration-300" />
-        ) : (
-          <Database className="w-4 h-4 transition-transform group-hover:scale-110 duration-300" />
+        {state === 'idle' && (
+          <>
+            <Database className="w-4 h-4 transition-transform group-hover:scale-110 duration-300" />
+            <div className="flex flex-col items-start leading-none gap-0.5">
+              <span className="font-semibold text-sm">Docker Pull</span>
+              <span className="font-mono text-[10px] text-slate-400 group-hover:text-blue-600 transition-colors">
+                arnab2001/optischema-slim
+              </span>
+            </div>
+            <Copy className="w-3 h-3 text-slate-300 opacity-0 -ml-1 group-hover:opacity-100 group-hover:ml-0 transition-all duration-300" />
+          </>
         )}
 
-        <div className="flex flex-col items-start leading-none gap-0.5">
-          <span className={`font-semibold text-sm transition-colors duration-300 ${copied ? 'text-green-700' : ''} `}>
-            {copied ? 'Copied!' : 'Docker Pull'}
-          </span>
-          <span className="font-mono text-[10px] text-slate-400 group-hover:text-blue-600 transition-colors">
-            arnab2001/optischema-slim
-          </span>
-        </div>
+        {state === 'pulling' && (
+          <>
+            <svg className="animate-spin h-4 w-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <div className="flex flex-col items-start leading-none gap-0.5 animate-pulse">
+              <span className="font-mono text-xs font-semibold">Pulling fs layer</span>
+              <span className="font-mono text-[10px] opacity-70">db85... download</span>
+            </div>
+          </>
+        )}
 
-        {!copied && (
-          <Copy className="w-3 h-3 text-slate-300 opacity-0 -ml-1 group-hover:opacity-100 group-hover:ml-0 transition-all duration-300" />
+        {state === 'extracting' && (
+          <>
+            <ArrowRight className="w-4 h-4 text-blue-500 animate-pulse" />
+            <div className="flex flex-col items-start leading-none gap-0.5">
+              <span className="font-mono text-xs font-semibold">Extracting</span>
+              <span className="font-mono text-[10px] opacity-70">sha256: verified</span>
+            </div>
+          </>
+        )}
+
+        {state === 'copied' && (
+          <>
+            <Check className="w-4 h-4 text-green-600 animate-in zoom-in duration-300" />
+            <span className="font-semibold text-sm">Copied!</span>
+          </>
         )}
       </div>
     </button>
