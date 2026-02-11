@@ -131,24 +131,21 @@ export default function LandingPage() {
 
             {/* 2. Secondary: The "Terminal Source" Button */}
             {/* 2. Secondary: The "Terminal Source" Button */}
-            <a
-              href="https://github.com/arnab2001/Optischema-Slim"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group relative inline-flex h-12 items-center justify-center gap-3 overflow-hidden rounded-xl border border-slate-200 bg-white px-6 text-slate-600 shadow-sm transition-all duration-300 hover:border-slate-300 hover:text-slate-900 hover:shadow-md"
-            >
+            {/* 2. Secondary: The "Docker Pull" Button */}
+            <div className="group relative inline-flex h-12 items-center justify-center gap-3 overflow-hidden rounded-xl border border-slate-200 bg-white px-6 text-slate-600 shadow-sm transition-all duration-300 hover:border-blue-300 hover:text-slate-900 hover:shadow-md cursor-copy"
+              onClick={() => navigator.clipboard.writeText("docker pull arnab2001/optischema-slim:latest")}>
               <div className="absolute inset-0 bg-slate-50 opacity-0 transition-opacity group-hover:opacity-100" />
 
               <div className="relative flex items-center gap-3">
-                <Github className="w-4 h-4" />
+                <Database className="w-4 h-4" />
                 <div className="flex flex-col items-start leading-none gap-0.5">
-                  <span className="font-semibold text-sm">Build from Source</span>
+                  <span className="font-semibold text-sm">Docker Pull</span>
                   <span className="font-mono text-[10px] text-slate-400 group-hover:text-blue-600 transition-colors">
-                    git clone optischema...
+                    arnab2001/optischema-slim
                   </span>
                 </div>
               </div>
-            </a>
+            </div>
           </div>
 
           {/* Ecosystem Strip */}
@@ -282,6 +279,127 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Feature Showcase Section */}
+      <section className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 bg-white border-y border-slate-100">
+        <div className="text-center mb-16">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-medium mb-4">
+            <Zap className="w-3 h-3" /> Powerful Features
+          </div>
+          <h2 className="text-3xl md:text-5xl font-bold text-slate-900 mb-4">Everything you need to optimize.</h2>
+          <p className="text-slate-500 max-w-2xl mx-auto text-lg">
+            A complete toolkit for PostgreSQL performance analysis, running entirely on your local machine.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center mb-32">
+          <div className="space-y-6">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center text-orange-600">
+                <Activity className="w-5 h-5" />
+              </div>
+              <h3 className="text-2xl font-bold text-slate-900">Slow Query Analysis</h3>
+            </div>
+            <p className="text-slate-600 text-lg leading-relaxed">
+              Instantly identify performance bottlenecks. Our AI analyzes execution plans and visualizes cost distribution, highlighting the exact nodes slowing you down.
+            </p>
+            <ul className="space-y-3">
+              <li className="flex items-center gap-2 text-slate-600">
+                <CheckCircle2 className="w-5 h-5 text-green-500" />
+                <span>Visual breakdown of query costs</span>
+              </li>
+              <li className="flex items-center gap-2 text-slate-600">
+                <CheckCircle2 className="w-5 h-5 text-green-500" />
+                <span>Automatic bottleneck detection</span>
+              </li>
+              <li className="flex items-center gap-2 text-slate-600">
+                <CheckCircle2 className="w-5 h-5 text-green-500" />
+                <span>Natural language explanations</span>
+              </li>
+            </ul>
+          </div>
+          <div className="relative group perspective-1000">
+            <div className="absolute inset-0 bg-gradient-to-tr from-orange-500/20 to-rose-500/20 rounded-2xl blur-xl group-hover:blur-2xl transition-all duration-500 opacity-60"></div>
+            <img
+              src="/mockups/feature-slow-query.png"
+              alt="Slow Query Analysis"
+              className="relative rounded-2xl shadow-2xl border border-slate-200 transform transition-transform duration-500 group-hover:rotate-y-2 group-hover:scale-[1.02]"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center mb-32">
+          <div className="order-2 lg:order-1 relative group perspective-1000">
+            <div className="absolute inset-0 bg-gradient-to-bl from-blue-500/20 to-indigo-500/20 rounded-2xl blur-xl group-hover:blur-2xl transition-all duration-500 opacity-60"></div>
+            <img
+              src="/mockups/feature-index.png"
+              alt="Hypothetical Indexing"
+              className="relative rounded-2xl shadow-2xl border border-slate-200 transform transition-transform duration-500 group-hover:-rotate-y-2 group-hover:scale-[1.02]"
+            />
+          </div>
+          <div className="order-1 lg:order-2 space-y-6">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600">
+                <Database className="w-5 h-5" />
+              </div>
+              <h3 className="text-2xl font-bold text-slate-900">Hypothetical Indexing</h3>
+            </div>
+            <p className="text-slate-600 text-lg leading-relaxed">
+              Test indexes without creating them. Using <code className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700 font-mono text-sm">hypopg</code>, we simulate the impact of new indexes on your query execution plans instantly.
+            </p>
+            <ul className="space-y-3">
+              <li className="flex items-center gap-2 text-slate-600">
+                <CheckCircle2 className="w-5 h-5 text-green-500" />
+                <span>Zero-cost index verification</span>
+              </li>
+              <li className="flex items-center gap-2 text-slate-600">
+                <CheckCircle2 className="w-5 h-5 text-green-500" />
+                <span>Compare before/after execution plans</span>
+              </li>
+              <li className="flex items-center gap-2 text-slate-600">
+                <CheckCircle2 className="w-5 h-5 text-green-500" />
+                <span>Auto-generate CREATE INDEX SQL</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+          <div className="space-y-6">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center text-purple-600">
+                <Cpu className="w-5 h-5" />
+              </div>
+              <h3 className="text-2xl font-bold text-slate-900">Bring Your Own Model</h3>
+            </div>
+            <p className="text-slate-600 text-lg leading-relaxed">
+              Total privacy or maximum power - the choice is yours. Run 100% locally with Ollama or connect to your preferred LLM provider.
+            </p>
+            <ul className="space-y-3">
+              <li className="flex items-center gap-2 text-slate-600">
+                <CheckCircle2 className="w-5 h-5 text-green-500" />
+                <span>Local-first with Ollama (SQLCoder)</span>
+              </li>
+              <li className="flex items-center gap-2 text-slate-600">
+                <CheckCircle2 className="w-5 h-5 text-green-500" />
+                <span>Support for OpenAI, Anthropic, Gemini</span>
+              </li>
+              <li className="flex items-center gap-2 text-slate-600">
+                <CheckCircle2 className="w-5 h-5 text-green-500" />
+                <span>Switch models on the fly</span>
+              </li>
+            </ul>
+          </div>
+          <div className="relative group perspective-1000">
+            <div className="absolute inset-0 bg-gradient-to-tr from-purple-500/20 to-pink-500/20 rounded-2xl blur-xl group-hover:blur-2xl transition-all duration-500 opacity-60"></div>
+            <img
+              src="/mockups/feature-byom.png"
+              alt="Bring Your Own Model"
+              className="relative rounded-2xl shadow-2xl border border-slate-200 transform transition-transform duration-500 group-hover:rotate-y-2 group-hover:scale-[1.02]"
+            />
+          </div>
+        </div>
+      </section>
+
       {/* Terminal Section */}
       <section className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
         <div className="text-center mb-12">
@@ -408,29 +526,28 @@ function TypewriterTerminal() {
     <div className="space-y-2 font-mono text-sm">
       <div className="flex items-center gap-2">
         <span className="text-green-400">➜</span>
-        <span>git clone https://github.com/arnab2001/Optischema-Slim.git</span>
+        <span>docker pull arnab2001/optischema-slim:latest</span>
       </div>
 
       <div className={`flex items-center gap-2 transition-opacity duration-300 ${step >= 1 ? 'opacity-100' : 'opacity-0'} `}>
         <span className="text-green-400">➜</span>
-        <span>docker compose up -d</span>
+        <span>docker run -p 8099:8080 arnab2001/optischema-slim:latest</span>
       </div>
 
       <div className={`pt-2 text-gray-500 transition-opacity duration-300 ${step >= 2 ? 'opacity-100' : 'opacity-0'} `}>
-        [+] Running 3/3<br />
-        ✔ Container optischema-db      <span className="text-green-500">Started</span><br />
-        ✔ Container optischema-api     <span className="text-green-500">Started</span><br />
+        [+] Running 1/1<br />
+        ✔ Container optischema     <span className="text-green-500">Started</span><br />
       </div>
 
       <div className={`pt-2 flex items-center gap-2 transition-opacity duration-300 ${step >= 3 ? 'opacity-100' : 'opacity-0'} `}>
         <span className="text-blue-400">ℹ</span>
-        <span>Detecting Local LLM...</span>
+        <span>Initializing OptiSchema...</span>
       </div>
 
       <div className={`text-emerald-400 pt-1 transition-opacity duration-300 ${step >= 4 ? 'opacity-100' : 'opacity-0'} `}>
-        ✔ Connected to Ollama (SQLCoder-7B)
+        ✔ Server running on port 8080
         <br />
-        <span className="text-white mt-2 block font-bold">Ready! UI running at http://localhost:3000</span>
+        <span className="text-white mt-2 block font-bold">Ready! UI running at http://localhost:8099</span>
       </div>
     </div>
   )
