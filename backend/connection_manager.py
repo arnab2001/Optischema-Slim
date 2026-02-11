@@ -56,21 +56,28 @@ class ConnectionManager:
             # Test connection and extensions
             async with pool.acquire() as conn:
                 # Detect and cache PostgreSQL version (once per connection)
-                version_num = await conn.fetchval("SHOW server_version_num")
-                if version_num:
-                    self._pg_version = int(version_num)
-                    logger.info(f"Detected PostgreSQL version: {self._pg_version}")
-                else:
-                    # Fallback: try to parse from version string
-                    version_str = await conn.fetchval("SELECT version()")
-                    if version_str:
-                        # Extract version number from string like "PostgreSQL 14.5"
-                        import re
-                        match = re.search(r'PostgreSQL (\d+)\.(\d+)', version_str)
-                        if match:
-                            major, minor = int(match.group(1)), int(match.group(2))
-                            self._pg_version = major * 10000 + minor * 100
-                            logger.info(f"Detected PostgreSQL version (parsed): {self._pg_version}")
+                try:
+                    version_num = await conn.fetchval("SHOW server_version_num")
+                    if version_num:
+                        self._pg_version = int(version_num)
+                        logger.info(f"Detected PostgreSQL version: {self._pg_version}")
+                    else:
+                        # Fallback: try to parse from version string
+                        version_str = await conn.fetchval("SELECT version()")
+                        if version_str:
+                            import re
+                            match = re.search(r'PostgreSQL (\d+)\.(\d+)', version_str)
+                            if match:
+                                major, minor = int(match.group(1)), int(match.group(2))
+                                self._pg_version = major * 10000 + minor * 100
+                                logger.info(f"Detected PostgreSQL version (parsed): {self._pg_version}")
+                except Exception as e:
+                    logger.warning(f"Could not detect PostgreSQL version: {e}")
+
+                # Conservative default if all detection methods failed
+                if self._pg_version is None:
+                    self._pg_version = 120000  # Default to PG12 syntax (safest)
+                    logger.warning("Could not detect PostgreSQL version, defaulting to 12 (120000)")
                 
                 # Check for pg_stat_statements
                 extension_exists = await conn.fetchval(

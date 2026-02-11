@@ -191,9 +191,9 @@ class SimulationService:
             # 1. Find a working candidate (handles type mismatches like UUID vs Int)
             explain_query = await self.find_working_candidate(conn, original_query)
 
-            # Run everything in a transaction that auto-rollbacks
-            async with conn.transaction():
-                try:
+            try:
+                # Run in a transaction for safety
+                async with conn.transaction():
                     # 2. Get Original Cost
                     plan_before_json = await conn.fetchval(f"EXPLAIN (FORMAT JSON) {explain_query}")
                     plan_before = json.loads(plan_before_json)[0]['Plan']
@@ -211,27 +211,27 @@ class SimulationService:
                     plan_after_json = await conn.fetchval(f"EXPLAIN (FORMAT JSON) {explain_query}")
                     plan_after = json.loads(plan_after_json)[0]['Plan']
                     cost_after = plan_after['Total Cost']
-                    
-                    # 6. Check if the index was actually used in the new plan
-                    # We look for "Index Scan" or "Index Only Scan" in the JSON tree
-                    def find_index_usage(node):
+
+                    # 5. Check if a hypothetical index was actually used in the new plan
+                    def find_hypopg_index_usage(node):
                         node_type = node.get("Node Type", "")
                         if "Index Scan" in node_type or "Index Only Scan" in node_type:
-                            return True
+                            idx_name = node.get("Index Name", "")
+                            # HypoPG virtual indexes have names starting with "<hypopg>..."
+                            if idx_name.startswith("<"):
+                                return True
                         for child in node.get("Plans", []):
-                            if find_index_usage(child):
+                            if find_hypopg_index_usage(child):
                                 return True
                         return False
-                    
-                    used_index = find_index_usage(plan_after)
 
-                    # 7. Calculate Improvement
+                    used_index = find_hypopg_index_usage(plan_after)
+
+                    # 6. Calculate Improvement
                     improvement = 0
                     if cost_before > 0:
                         improvement = ((cost_before - cost_after) / cost_before) * 100
 
-                    # TRANSACTION ROLLS BACK HERE -> Virtual index is gone.
-                    
                     return {
                         "can_simulate": True,
                         "cost_before": cost_before,
@@ -243,12 +243,17 @@ class SimulationService:
                         "verification_status": "verified"
                     }
 
-                except Exception as e:
-                    # Capture syntax errors in AI suggestion or planner issues
-                    logger.error(f"Verification simulation failed: {e}")
-                    return {
-                        "error": f"Simulation failed: {str(e)}",
-                        "can_simulate": False
-                    }
+            except Exception as e:
+                logger.error(f"Verification simulation failed: {e}")
+                return {
+                    "error": f"Simulation failed: {str(e)}",
+                    "can_simulate": False
+                }
+            finally:
+                # Always clean up virtual indexes to prevent leaking across pooled connections
+                try:
+                    await conn.execute("SELECT hypopg_reset()")
+                except Exception:
+                    pass
 
 simulation_service = SimulationService()

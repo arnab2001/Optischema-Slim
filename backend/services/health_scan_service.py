@@ -1,7 +1,7 @@
 
 import logging
 from typing import Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from connection_manager import connection_manager
 from services.llm_service import llm_service
 from storage import save_health_result, get_setting
@@ -59,14 +59,18 @@ class HealthScanService:
         
         try:
             async with pool.acquire() as conn:
-                # 1. Global Workload Baseline
-                vitals['total_db_time'] = await conn.fetchval("SELECT SUM(total_exec_time)::float FROM pg_stat_statements") or 0.0
+                # 1. Global Workload Baseline (scoped to current database)
+                vitals['total_db_time'] = await conn.fetchval("""
+                    SELECT SUM(total_exec_time)::float FROM pg_stat_statements
+                    WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
+                """) or 0.0
 
-                # 2. Top Queries (Filtered for system noise)
+                # 2. Top Queries (filtered to current database and system noise)
                 vitals['top_queries'] = await conn.fetch(f"""
-                    SELECT queryid::text, query, total_exec_time::float, calls, mean_exec_time::float, rows 
-                    FROM pg_stat_statements 
-                    WHERE query NOT ILIKE '%%pg_switch_wal%%'
+                    SELECT queryid::text, query, total_exec_time::float, calls, mean_exec_time::float, rows
+                    FROM pg_stat_statements
+                    WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
+                      AND query NOT ILIKE '%%pg_switch_wal%%'
                       AND query NOT ILIKE '%%pg_version%%'
                       AND query NOT ILIKE '%%pg_catalog.%%'
                       AND query NOT ILIKE '%%COMMIT%%'
@@ -75,7 +79,7 @@ class HealthScanService:
                       AND query NOT ILIKE '%%VACUUM%%'
                       AND query NOT ILIKE '%%ANALYZE%%'
                       AND query NOT ILIKE '%%SHOW %%'
-                    ORDER BY total_exec_time DESC 
+                    ORDER BY total_exec_time DESC
                     LIMIT {limit};
                 """)
                 
@@ -138,6 +142,17 @@ class HealthScanService:
                 if (r['total_bytes'] or 0) < min_bloat_bytes:
                     continue
                     
+                # Determine if vacuum is truly overdue based on last_autovacuum
+                last_av = r['last_autovacuum']
+                if last_av is None:
+                    vacuum_overdue = True  # Never vacuumed
+                else:
+                    # Ensure timezone-aware comparison
+                    now = datetime.now(timezone.utc)
+                    if last_av.tzinfo is None:
+                        last_av = last_av.replace(tzinfo=timezone.utc)
+                    vacuum_overdue = (now - last_av) > timedelta(hours=24)
+
                 bloat_issues.append({
                     "schema": r['schemaname'],
                     "table": r['table'],
@@ -146,8 +161,8 @@ class HealthScanService:
                     "dead_tuples": r['dead_tuples'],
                     "total_bytes": r['total_bytes'],
                     "total_size": r['total_size'],
-                    "last_autovacuum": str(r['last_autovacuum']) if r['last_autovacuum'] else None,
-                    "vacuum_overdue": True,
+                    "last_autovacuum": str(last_av) if last_av else None,
+                    "vacuum_overdue": vacuum_overdue,
                     "severity": "high" if r['dead_ratio'] > 50 else "medium",
                     "recommendation": f"VACUUM (VERBOSE, ANALYZE) \"{r['schemaname']}\".\"{r['table']}\";"
                 })

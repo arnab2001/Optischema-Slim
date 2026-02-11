@@ -79,105 +79,122 @@ class LLMService:
     def _prune_schema(self, query: str, full_schema: str) -> str:
         """
         Extract table names from query and filter schema context.
+        Handles both unqualified ('users') and schema-qualified ('public.users') names.
         """
         try:
-            # Parse query to get table names
+            # Parse query to get table names (both qualified and unqualified)
             table_names = set()
             for table in sqlglot.parse_one(query).find_all(exp.Table):
+                # Always add the bare table name for matching
                 table_names.add(table.name.lower())
-                
+                # Also add schema-qualified name if present (e.g. "public.users")
+                if table.db:
+                    table_names.add(f"{table.db.lower()}.{table.name.lower()}")
+
             if not table_names:
-                 return full_schema
-            
-            # Simple heuristic: scan full_schema for blocks containing table names
-            # Schema format is typically: "Table: name\n..."
+                return full_schema
+
+            # Scan full_schema for blocks containing table names
+            # Schema format is typically: "Table: public.table_name\n..."
             relevant_lines = []
-            capturing = False
-            
-            # If schema is just one big block, return it. If it's sectioned, try to filter.
-            # Assuming schema_context is line-oriented.
             lines = full_schema.split('\n')
             current_table_block = []
             block_is_relevant = False
-            
+
             for line in lines:
                 if line.strip().lower().startswith("table:"):
                     # Flush previous block
                     if current_table_block and block_is_relevant:
                         relevant_lines.extend(current_table_block)
-                        relevant_lines.append("") # Spacer
-                    
+                        relevant_lines.append("")  # Spacer
+
                     # Start new block
                     current_table_block = [line]
-                    # Check if this table is relevant
-                    # Line format eg: "Table: public.demo_logs"
-                    block_is_relevant = any(t in line.lower() for t in table_names)
+                    # Extract table name from line like "Table: public.demo_logs"
+                    line_lower = line.lower()
+                    # Match against both bare name and qualified name
+                    block_is_relevant = any(t in line_lower for t in table_names)
                 else:
                     current_table_block.append(line)
-            
+
             # Flush last block
             if current_table_block and block_is_relevant:
                 relevant_lines.extend(current_table_block)
-                
+
             if not relevant_lines:
                 # Fallback if parsing failed or format didn't match
                 return full_schema
-                
+
             return "\n".join(relevant_lines)
-            
+
         except Exception as e:
             logger.warning(f"Schema pruning failed: {e}")
             return full_schema
+
+    @staticmethod
+    def _extract_json_block(text: str) -> Optional[str]:
+        """
+        Extract the first balanced JSON object from a ```json code fence.
+        Uses brace counting instead of regex to handle nested objects correctly.
+        """
+        marker = text.find('```json')
+        if marker == -1:
+            return None
+        # Find the opening brace after the marker
+        start = text.find('{', marker)
+        if start == -1:
+            return None
+        depth = 0
+        in_string = False
+        escape = False
+        for i in range(start, len(text)):
+            ch = text[i]
+            if escape:
+                escape = False
+                continue
+            if ch == '\\' and in_string:
+                escape = True
+                continue
+            if ch == '"' and not escape:
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0:
+                    return text[start:i + 1]
+        return None
 
     def _clean_llm_result(self, result: Dict[str, Any]) -> Dict[str, Any]:
         """
         Clean up common LLM hallucinations in JSON keys.
         Handles Markdown blocks and DeepSeek <think> tags.
         """
-        # If result is already a dict, we might still need to fix keys
-        # If result came from a provider that returns raw text (caught in exception), it might be handled there.
-        # But if the provider successfully returned a dict but it's weird, we clean it here.
-        
         if not isinstance(result, dict):
             return result
 
-        # DeepSeek R1 might interpret "json output" as "raw json string inside a key"
-        # Or provider might have returned an advisory dict because parsing failed.
-        # If "reasoning" contains raw JSON (extraction fallback), we might want to re-parse.
-        
-        # But crucially, if the provider's `analyze` method failed to parse JSON, it returns an error dict.
-        # We need to handle that.
-        
-        # If "reasoning" looks like it has a ```json block in it, extract it.
-        # (This handles the case where the provider just dumped the whole text into reasoning)
+        # If "reasoning" contains a ```json block, extract it using balanced braces
         if "reasoning" in result and isinstance(result["reasoning"], str):
-            text = result["reasoning"]
-            json_match = re.search(r'```json\s*(\{.*?\})\s*```', text, re.DOTALL)
-            if json_match:
+            json_str = self._extract_json_block(result["reasoning"])
+            if json_str:
                 try:
-                    inner_json = json.loads(json_match.group(1))
-                    # Update result with inner json values
+                    inner_json = json.loads(json_str)
                     result.update(inner_json)
-                    # Keep the original reasoning text as "raw_reasoning" maybe?
-                    # Or just prefer the inner json's reasoning if present
-                except:
+                except (json.JSONDecodeError, ValueError):
                     pass
 
-        # Validate SQL keys
-        sql_fallbacks = ["sql_query", "query", "fix", "suggested_sql", "code", ",  ", " , "]
-        
+        # Validate SQL keys — only check known SQL-related key names
+        # to avoid false positives from reasoning text like "Create a backup..."
+        sql_fallbacks = ["sql_query", "suggested_sql", "fix", "index_sql", "rewrite_sql", "code"]
+
         if "sql" not in result:
             for fallback in sql_fallbacks:
-                if fallback in result:
+                if fallback in result and isinstance(result[fallback], str) and result[fallback].strip():
                     result["sql"] = result[fallback]
                     break
-            
-            # If still not found, look for any key whose value looks like SQL
-            if "sql" not in result:
-                for k, v in result.items():
-                    if isinstance(v, str) and (v.strip().upper().startswith("CREATE") or v.strip().upper().startswith("SELECT")):
-                        result["sql"] = v
-                        break
         
         # Smarter category inference: If the model says ADVISORY but provides a CREATE INDEX, it's an INDEX.
         if "sql" in result and isinstance(result["sql"], str):
@@ -223,13 +240,53 @@ class LLMService:
 
         return result
 
+    def _extract_plan_bottlenecks(self, plan: Dict[str, Any]) -> str:
+        """
+        Extract key bottleneck nodes from an execution plan instead of dumping the full JSON.
+        This reduces token usage and focuses the LLM on what matters.
+        """
+        lines = []
+        total_cost = plan.get('Total Cost', 0)
+        lines.append(f"Total Cost: {total_cost}")
+
+        def walk(node, depth=0):
+            node_type = node.get('Node Type', '')
+            relation = node.get('Relation Name', '')
+            idx_name = node.get('Index Name', '')
+            cost = node.get('Total Cost', 0)
+            rows = node.get('Plan Rows', 0)
+            filt = node.get('Filter', '')
+            join_cond = node.get('Hash Cond', '') or node.get('Merge Cond', '') or node.get('Join Filter', '')
+            sort_key = node.get('Sort Key', [])
+
+            indent = "  " * depth
+            parts = [f"{indent}{node_type}"]
+            if relation:
+                parts.append(f"on {relation}")
+            if idx_name:
+                parts.append(f"using {idx_name}")
+            parts.append(f"(cost={cost}, rows={rows})")
+            if filt:
+                parts.append(f"filter: {filt}")
+            if join_cond:
+                parts.append(f"cond: {join_cond}")
+            if sort_key:
+                parts.append(f"sort: {', '.join(str(k) for k in sort_key)}")
+            lines.append(" ".join(parts))
+
+            for child in node.get('Plans', []):
+                walk(child, depth + 1)
+
+        walk(plan)
+        return "\n".join(lines)
+
     def _build_standard_prompt(self, query: str, schema_info: str, plan: Dict[str, Any]) -> str:
         """
         Standard Prompt (Path A) for Qwen, Llama, SQLCoder.
         Forces CoT inside JSON.
         """
-        total_cost = plan.get('Total Cost', 'Unknown')
-        
+        plan_summary = self._extract_plan_bottlenecks(plan)
+
         return f"""
 ROLE: PostgreSQL Performance Architect.
 
@@ -238,33 +295,35 @@ Optimize the provided query based on the Schema and Plan.
 Focus on safety and high-impact changes only.
 
 === POLICY (RULES OF ENGAGEMENT) ===
-1. JOIN KEY PRIORITY: If a JOIN results in a Sequential Scan on a table with more than 100 rows, you MUST suggest an index on the join columns (Foreign Keys). Do not be vague. Provide the exact `CREATE INDEX` SQL.
-2. MULTI-INDEX SUPPORT: If multiple indexes are needed to optimize the query (e.g., across multiple tables), provide ALL of them in the "sql" field, separated by semicolons.
-3. NO INDEX SPAM: If the query scans >20% of the table (e.g. Group By on the whole table), B-Tree indexes rarely help. Prefer "ADVISORY".
-4. UNKNOWN PARAMS: The query uses parameters ($1, $2). Use these in your index logic if appropriate.
-5. VALIDITY: Only use columns listed in the schema. Do not hallucinate columns.
-6. ACTIONS: If you suggest a fix, set category to "INDEX" or "REWRITE". Use "ADVISORY" only as a last resort.
+1. JOIN KEY PRIORITY: If a JOIN results in a Sequential Scan on a table with more than 100 rows, you MUST suggest an index on the join columns (Foreign Keys). Do not be vague. Provide the exact `CREATE INDEX CONCURRENTLY` SQL to avoid locking the table during creation.
+2. MULTI-INDEX SUPPORT: If multiple indexes are needed to optimize the query (e.g., across multiple tables), provide ALL of them in the "sql" field, separated by semicolons. Always use `CREATE INDEX CONCURRENTLY` to prevent table locks in production.
+3. NO INDEX SPAM: If the query scans >20% of the table (e.g. Group By on the whole table), B-Tree indexes rarely help. Also avoid suggesting indexes on low-cardinality columns (few distinct values). Prefer "ADVISORY".
+4. NO DUPLICATE INDEXES: Check the "Existing Indexes" section. Do NOT suggest an index that already exists or is a subset of an existing index.
+5. UNKNOWN PARAMS: The query uses parameters ($1, $2). Use these in your index logic if appropriate.
+6. VALIDITY: Only use columns listed in the schema. Do not hallucinate columns.
+7. ACTIONS: If you suggest a fix, set category to "INDEX" or "REWRITE". Use "ADVISORY" only as a last resort.
 
 === CONTEXT ===
 TARGET QUERY: {query}
 
-=== DATABASE STATS ===
+=== DATABASE SCHEMA & STATISTICS ===
+(Columns annotated with [PK], [FK -> ref], cardinality. Indexes show scan count and definition.)
 {schema_info}
 
 === EXECUTION PLAN ===
-Total Cost: {total_cost}
-Plan Details: {json.dumps(plan, indent=2)}
+{plan_summary}
 
 INSTRUCTIONS:
 1. Identify the primary bottleneck (Sequential Scan on a large table in a Join, or expensive Sort).
-2. Provide the EXACT SQL to fix it. If multiple indexes are needed, provide them all.
-3. You must output a valid JSON object.
+2. Check existing indexes — do NOT suggest indexes that already cover the bottleneck columns.
+3. Provide the EXACT SQL to fix it. If multiple indexes are needed, provide them all. Always use CREATE INDEX CONCURRENTLY.
+4. You must output a valid JSON object.
 
 JSON FORMAT:
 {{
-  "reasoning": "Explain exactly which join/table is causing the seq scan and why the index helps.",
+  "reasoning": "Explain exactly which join/table is causing the seq scan, what existing indexes cover, and why a new index helps.",
   "category": "INDEX" | "REWRITE" | "ADVISORY",
-  "sql": "CREATE INDEX...; CREATE INDEX..." or null
+  "sql": "CREATE INDEX CONCURRENTLY..." or null
 }}
 """
 
@@ -273,8 +332,8 @@ JSON FORMAT:
         Reasoning Prompt (Path B) for DeepSeek R1.
         Encourages unconstrained thinking before JSON.
         """
-        total_cost = plan.get('Total Cost', 'Unknown')
-        
+        plan_summary = self._extract_plan_bottlenecks(plan)
+
         return f"""
 ROLE: PostgreSQL Performance Architect.
 
@@ -283,27 +342,29 @@ Optimize the provided query based on the Schema and Plan.
 Focus on safety and high-impact changes only.
 
 === POLICY (RULES OF ENGAGEMENT) ===
-1. JOIN KEY PRIORITY: If a JOIN results in a Sequential Scan on a table with more than 100 rows, you MUST suggest an index on the join columns (Foreign Keys). Do not be vague. Provide the exact `CREATE INDEX` SQL.
-2. MULTI-INDEX SUPPORT: If multiple indexes are needed to optimize the query (e.g., across multiple tables), provide ALL of them in the "sql" field, separated by semicolons.
-3. NO INDEX SPAM: If the query scans >20% of the table (e.g. Group By on the whole table), B-Tree indexes rarely help. Prefer "ADVISORY".
-4. UNKNOWN PARAMS: The query uses parameters ($1, $2). Use these in your index logic if appropriate.
-5. VALIDITY: Only use columns listed in the schema. Do not hallucinate columns.
-6. ACTIONS: If you suggest a fix, set category to "INDEX" or "REWRITE". Use "ADVISORY" only as a last resort.
+1. JOIN KEY PRIORITY: If a JOIN results in a Sequential Scan on a table with more than 100 rows, you MUST suggest an index on the join columns (Foreign Keys). Do not be vague. Provide the exact `CREATE INDEX CONCURRENTLY` SQL to avoid locking the table during creation.
+2. MULTI-INDEX SUPPORT: If multiple indexes are needed to optimize the query (e.g., across multiple tables), provide ALL of them in the "sql" field, separated by semicolons. Always use `CREATE INDEX CONCURRENTLY` to prevent table locks in production.
+3. NO INDEX SPAM: If the query scans >20% of the table (e.g. Group By on the whole table), B-Tree indexes rarely help. Also avoid suggesting indexes on low-cardinality columns (few distinct values). Prefer "ADVISORY".
+4. NO DUPLICATE INDEXES: Check the "Existing Indexes" section. Do NOT suggest an index that already exists or is a subset of an existing index.
+5. UNKNOWN PARAMS: The query uses parameters ($1, $2). Use these in your index logic if appropriate.
+6. VALIDITY: Only use columns listed in the schema. Do not hallucinate columns.
+7. ACTIONS: If you suggest a fix, set category to "INDEX" or "REWRITE". Use "ADVISORY" only as a last resort.
 
 === CONTEXT ===
 TARGET QUERY: {query}
 
-=== DATABASE STATS ===
+=== DATABASE SCHEMA & STATISTICS ===
+(Columns annotated with [PK], [FK -> ref], cardinality. Indexes show scan count and definition.)
 {schema_info}
 
 === EXECUTION PLAN ===
-Total Cost: {total_cost}
-Plan Details: {json.dumps(plan, indent=2)}
+{plan_summary}
 
 INSTRUCTIONS:
 1. Analyze the query execution plan deeply.
-2. Verify if the suggested index(es) cover the specific filters and sort keys.
-3. Suggest the optimal fix(es). If multiple indexes are needed, provide them all.
+2. Check existing indexes — do NOT suggest indexes that already cover the bottleneck columns.
+3. Verify if the suggested index(es) cover the specific filters and sort keys.
+4. Suggest the optimal fix(es). If multiple indexes are needed, provide them all.
 
 OUTPUT FORMAT:
 First, output your reasoning process enclosed in <think> tags.
@@ -313,8 +374,8 @@ Example JSON output:
 ```json
 {{
   "category": "INDEX",
-  "reasoning": "Join on table X is slow because of Seq Scan. Suggested index for FK column Y.",
-  "sql": "CREATE INDEX idx_x_y ON x(y); CREATE INDEX idx_a_b ON a(b);"
+  "reasoning": "Join on table X is slow because of Seq Scan. Existing index idx_x_a covers column a but not the join column y. Suggested index for FK column Y.",
+  "sql": "CREATE INDEX CONCURRENTLY idx_x_y ON x(y); CREATE INDEX CONCURRENTLY idx_a_b ON a(b);"
 }}
 ```
 """

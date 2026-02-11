@@ -12,6 +12,7 @@ import logging
 
 from connection_manager import connection_manager
 from tenant_context import TenantContext
+from db_utils import configure_ssl
 
 logger = logging.getLogger(__name__)
 
@@ -42,39 +43,26 @@ class IndexAdvisorService:
             List of unused index recommendations
         """
         try:
-            # Handle SSL configuration for RDS
-            config = connection_config.copy()
-            if config.get('ssl') == 'require':
-                config['ssl'] = True
-            elif config.get('ssl') == 'prefer':
-                config['ssl'] = True
-            elif config.get('ssl') == 'disable':
-                config['ssl'] = False
-            
-            # For RDS connections, we often need to disable certificate verification
-            if config.get('ssl') and config.get('ssl') is not False:
-                import ssl
-                config['ssl'] = ssl.create_default_context()
-                config['ssl'].check_hostname = False
-                config['ssl'].verify_mode = ssl.CERT_NONE
-            
-            # Connect to the monitored database
+            config = configure_ssl(connection_config)
             conn = await asyncpg.connect(**config)
-            
-            # Query for unused indexes (idx_scan = 0 in last 24 hours)
+
+            # Query for unused indexes (idx_scan = 0) with catalog metadata
             query = """
-                SELECT 
-                    schemaname as schema_name,
-                    relname as table_name,
-                    indexrelname as index_name,
-                    pg_size_pretty(pg_relation_size(indexrelid)) as size_pretty,
-                    pg_relation_size(indexrelid) as size_bytes,
-                    idx_scan,
-                    idx_tup_read,
-                    idx_tup_fetch
-                FROM pg_stat_user_indexes 
-                WHERE idx_scan = 0
-                ORDER BY pg_relation_size(indexrelid) DESC
+                SELECT
+                    sui.schemaname as schema_name,
+                    sui.relname as table_name,
+                    sui.indexrelname as index_name,
+                    pg_size_pretty(pg_relation_size(sui.indexrelid)) as size_pretty,
+                    pg_relation_size(sui.indexrelid) as size_bytes,
+                    sui.idx_scan,
+                    sui.idx_tup_read,
+                    sui.idx_tup_fetch,
+                    i.indisprimary,
+                    i.indisunique
+                FROM pg_stat_user_indexes sui
+                JOIN pg_index i ON i.indexrelid = sui.indexrelid
+                WHERE sui.idx_scan = 0
+                ORDER BY pg_relation_size(sui.indexrelid) DESC
             """
             
             rows = await conn.fetch(query)
@@ -89,11 +77,11 @@ class IndexAdvisorService:
                 # Calculate estimated savings
                 estimated_savings_mb = row['size_bytes'] / (1024 * 1024)
                 
-                # Detect index type and determine safety
+                # Detect index type from pg_index catalog flags (not name heuristics)
                 index_name = row['index_name']
-                is_primary_key = index_name.startswith('PK_') or index_name.endswith('_pkey')
-                is_unique = index_name.startswith('UQ_') or index_name.startswith('REL_') or 'unique' in index_name.lower()
-                is_foreign_key = index_name.startswith('FK_') or index_name.startswith('IDX_FK_')
+                is_primary_key = row['indisprimary']
+                is_unique = row['indisunique'] and not row['indisprimary']
+                is_foreign_key = False  # PG doesn't auto-create FK indexes; not reliably detectable
                 
                 # Categorize safety level
                 if is_primary_key:
@@ -161,25 +149,9 @@ class IndexAdvisorService:
             List of redundant index recommendations
         """
         try:
-            # Handle SSL configuration for RDS
-            config = connection_config.copy()
-            if config.get('ssl') == 'require':
-                config['ssl'] = True
-            elif config.get('ssl') == 'prefer':
-                config['ssl'] = True
-            elif config.get('ssl') == 'disable':
-                config['ssl'] = False
-            
-            # For RDS connections, we often need to disable certificate verification
-            if config.get('ssl') and config.get('ssl') is not False:
-                import ssl
-                config['ssl'] = ssl.create_default_context()
-                config['ssl'].check_hostname = False
-                config['ssl'].verify_mode = ssl.CERT_NONE
-            
-            # Connect to the monitored database
+            config = configure_ssl(connection_config)
             conn = await asyncpg.connect(**config)
-            
+
             # Query for potentially redundant indexes
             # This is a simplified analysis - in production you'd want more sophisticated logic
             query = """
@@ -441,24 +413,9 @@ class IndexAdvisorService:
             Dictionary with index statistics
         """
         try:
-            # Handle SSL configuration for RDS
-            config = connection_config.copy()
-            if config.get('ssl') == 'require':
-                config['ssl'] = True
-            elif config.get('ssl') == 'prefer':
-                config['ssl'] = True
-            elif config.get('ssl') == 'disable':
-                config['ssl'] = False
-            
-            # For RDS connections, we often need to disable certificate verification
-            if config.get('ssl') and config.get('ssl') is not False:
-                import ssl
-                config['ssl'] = ssl.create_default_context()
-                config['ssl'].check_hostname = False
-                config['ssl'].verify_mode = ssl.CERT_NONE
-            
+            config = configure_ssl(connection_config)
             conn = await asyncpg.connect(**config)
-            
+
             # Get total number of user indexes
             total_indexes_query = """
                 SELECT COUNT(*) as total_indexes
@@ -608,21 +565,7 @@ class IndexAdvisorService:
         List current indexes with size and usage for the given connection.
         """
         try:
-            # Handle SSL configuration for RDS
-            config = connection_config.copy()
-            if config.get('ssl') == 'require':
-                config['ssl'] = True
-            elif config.get('ssl') == 'prefer':
-                config['ssl'] = True
-            elif config.get('ssl') == 'disable':
-                config['ssl'] = False
-
-            if config.get('ssl') and config.get('ssl') is not False:
-                import ssl
-                config['ssl'] = ssl.create_default_context()
-                config['ssl'].check_hostname = False
-                config['ssl'].verify_mode = ssl.CERT_NONE
-
+            config = configure_ssl(connection_config)
             conn = await asyncpg.connect(**config)
 
             # Query to fetch present indexes with size and usage
