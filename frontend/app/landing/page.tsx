@@ -699,6 +699,7 @@ function LiveBenchmarkPill() {
 
 function DockerPullButton() {
   const [state, setState] = useState<'idle' | 'pulling' | 'extracting' | 'copied'>('idle')
+  const [progress, setProgress] = useState(0)
 
   const handleCopy = () => {
     if (state !== 'idle') return
@@ -707,18 +708,33 @@ function DockerPullButton() {
 
     // Start Animation Sequence
     setState('pulling')
+    setProgress(0)
+
+    // Simulate progress
+    const interval = setInterval(() => {
+      setProgress(p => {
+        if (p >= 100) {
+          clearInterval(interval)
+          return 100
+        }
+        return p + Math.random() * 10 // Random increments
+      })
+    }, 100)
 
     setTimeout(() => {
+      clearInterval(interval)
+      setProgress(100)
       setState('extracting')
-    }, 800)
+    }, 1500)
 
     setTimeout(() => {
       setState('copied')
-    }, 1800)
+    }, 2500)
 
     setTimeout(() => {
       setState('idle')
-    }, 3500)
+      setProgress(0)
+    }, 4500)
   }
 
   return (
@@ -728,10 +744,10 @@ function DockerPullButton() {
         ${state === 'idle' ? 'border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:text-slate-900 hover:shadow-md' : ''}
         ${state === 'pulling' || state === 'extracting' ? 'border-blue-200 bg-slate-50 text-blue-600' : ''}
         ${state === 'copied' ? 'border-green-200 bg-green-50 text-green-700' : ''}
-        min-w-[200px] px-6
+        min-w-[240px] px-6
       `}
     >
-      <div className="relative flex items-center gap-3">
+      <div className="relative flex items-center justify-center gap-3 w-full">
         {state === 'idle' && (
           <>
             <Database className="w-4 h-4 transition-transform group-hover:scale-110 duration-300" />
@@ -746,26 +762,34 @@ function DockerPullButton() {
         )}
 
         {state === 'pulling' && (
-          <>
-            <svg className="animate-spin h-4 w-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            <div className="flex flex-col items-start leading-none gap-0.5 animate-pulse">
-              <span className="font-mono text-xs font-semibold">Pulling fs layer</span>
-              <span className="font-mono text-[10px] opacity-70">db85... download</span>
+          <div className="w-full flex flex-col gap-1.5">
+            <div className="flex justify-between items-center text-[10px] font-mono leading-none">
+              <span>Pulling layers...</span>
+              <span>{Math.round(progress)}%</span>
             </div>
-          </>
+            <div className="h-1.5 w-full bg-blue-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-blue-500 rounded-full transition-all duration-100 ease-out"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <div className="text-[9px] font-mono text-slate-400 leading-none truncate">
+              db85... download complete
+            </div>
+          </div>
         )}
 
         {state === 'extracting' && (
-          <>
-            <ArrowRight className="w-4 h-4 text-blue-500 animate-pulse" />
+          <div className="flex items-center gap-2">
+            <div className="relative flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
+            </div>
             <div className="flex flex-col items-start leading-none gap-0.5">
-              <span className="font-mono text-xs font-semibold">Extracting</span>
+              <span className="font-mono text-xs font-semibold">Extracting...</span>
               <span className="font-mono text-[10px] opacity-70">sha256: verified</span>
             </div>
-          </>
+          </div>
         )}
 
         {state === 'copied' && (
