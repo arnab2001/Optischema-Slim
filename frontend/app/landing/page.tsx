@@ -2,7 +2,7 @@ import type * as React from "react";
 
 'use client'
 
-import { ArrowRight, CheckCircle2, ChevronRight, Terminal, Zap, Shield, Activity, Cpu, Mail, Star, Github, ArrowUpRight, Check, X, AlertCircle, Database } from 'lucide-react'
+import { ArrowRight, CheckCircle2, ChevronRight, Terminal, Zap, Shield, Activity, Cpu, Mail, Star, Github, ArrowUpRight, Check, X, AlertCircle, Database, Copy } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 
 export default function LandingPage() {
@@ -132,20 +132,7 @@ export default function LandingPage() {
             {/* 2. Secondary: The "Terminal Source" Button */}
             {/* 2. Secondary: The "Terminal Source" Button */}
             {/* 2. Secondary: The "Docker Pull" Button */}
-            <div className="group relative inline-flex h-12 items-center justify-center gap-3 overflow-hidden rounded-xl border border-slate-200 bg-white px-6 text-slate-600 shadow-sm transition-all duration-300 hover:border-blue-300 hover:text-slate-900 hover:shadow-md cursor-copy"
-              onClick={() => navigator.clipboard.writeText("docker pull arnab2001/optischema-slim:latest")}>
-              <div className="absolute inset-0 bg-slate-50 opacity-0 transition-opacity group-hover:opacity-100" />
-
-              <div className="relative flex items-center gap-3">
-                <Database className="w-4 h-4" />
-                <div className="flex flex-col items-start leading-none gap-0.5">
-                  <span className="font-semibold text-sm">Docker Pull</span>
-                  <span className="font-mono text-[10px] text-slate-400 group-hover:text-blue-600 transition-colors">
-                    arnab2001/optischema-slim
-                  </span>
-                </div>
-              </div>
-            </div>
+            <DockerPullButton />
           </div>
 
           {/* Ecosystem Strip */}
@@ -707,5 +694,45 @@ function LiveBenchmarkPill() {
         </div>
       </div>
     </div>
+  )
+}
+
+function DockerPullButton() {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText("docker pull arnab2001/optischema-slim:latest")
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <button
+      onClick={handleCopy}
+      className="group relative inline-flex h-12 items-center justify-center gap-3 overflow-hidden rounded-xl border border-slate-200 bg-white px-6 text-slate-600 shadow-sm transition-all duration-300 hover:border-blue-300 hover:text-slate-900 hover:shadow-md active:scale-95"
+    >
+      <div className={`absolute inset-0 bg-slate-50 transition-opacity duration-300 ${copied ? 'opacity-100 bg-green-50' : 'opacity-0 group-hover:opacity-100'} `} />
+
+      <div className="relative flex items-center gap-3">
+        {copied ? (
+          <Check className="w-4 h-4 text-green-600 animate-in zoom-in duration-300" />
+        ) : (
+          <Database className="w-4 h-4 transition-transform group-hover:scale-110 duration-300" />
+        )}
+
+        <div className="flex flex-col items-start leading-none gap-0.5">
+          <span className={`font-semibold text-sm transition-colors duration-300 ${copied ? 'text-green-700' : ''} `}>
+            {copied ? 'Copied!' : 'Docker Pull'}
+          </span>
+          <span className="font-mono text-[10px] text-slate-400 group-hover:text-blue-600 transition-colors">
+            arnab2001/optischema-slim
+          </span>
+        </div>
+
+        {!copied && (
+          <Copy className="w-3 h-3 text-slate-300 opacity-0 -ml-1 group-hover:opacity-100 group-hover:ml-0 transition-all duration-300" />
+        )}
+      </div>
+    </button>
   )
 }
