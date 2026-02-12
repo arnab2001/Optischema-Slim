@@ -79,7 +79,18 @@ class OllamaProvider(LLMProvider):
                     
                     data = await response.json()
                     response_text = data.get("response", "{}").strip()
-                    
+
+                    # Log token usage
+                    prompt_tokens = data.get("prompt_eval_count", 0)
+                    completion_tokens = data.get("eval_count", 0)
+                    if prompt_tokens or completion_tokens:
+                        logger.info(
+                            f"[Ollama] Token usage: prompt={prompt_tokens}, "
+                            f"completion={completion_tokens}, "
+                            f"total={prompt_tokens + completion_tokens}, "
+                            f"model={self.model}"
+                        )
+
                     try:
                         return json.loads(response_text)
                     except json.JSONDecodeError:

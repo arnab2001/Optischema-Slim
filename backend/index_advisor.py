@@ -46,6 +46,25 @@ class IndexAdvisorService:
             config = configure_ssl(connection_config)
             conn = await asyncpg.connect(**config)
 
+            # Check stats freshness — warn if reset recently
+            stats_warning = None
+            try:
+                stats_reset = await conn.fetchval("""
+                    SELECT stats_reset FROM pg_stat_database
+                    WHERE datname = current_database()
+                """)
+                if stats_reset:
+                    reset_age = datetime.utcnow() - stats_reset.replace(tzinfo=None)
+                    if reset_age < timedelta(days=7):
+                        stats_warning = (
+                            f"Statistics were reset {reset_age.days} day(s) ago. "
+                            f"Index usage data may be incomplete. "
+                            f"Wait 1-2 weeks for reliable recommendations."
+                        )
+                        logger.warning(stats_warning)
+            except Exception as e:
+                logger.debug(f"Could not check stats_reset: {e}")
+
             # Query for unused indexes (idx_scan = 0) with catalog metadata
             query = """
                 SELECT
@@ -128,7 +147,8 @@ class IndexAdvisorService:
                     'safety_level': safety_level,
                     'reason': reason,
                     'recommendation_type': 'drop',
-                    'sql_fix': sql_fix
+                    'sql_fix': sql_fix,
+                    'stats_warning': stats_warning,
                 })
             
             return recommendations
@@ -152,43 +172,57 @@ class IndexAdvisorService:
             config = configure_ssl(connection_config)
             conn = await asyncpg.connect(**config)
 
-            # Query for potentially redundant indexes
-            # This is a simplified analysis - in production you'd want more sophisticated logic
-            query = """
-                SELECT 
-                    schemaname as schema_name,
-                    relname as table_name,
-                    indexrelname as index_name,
-                    pg_size_pretty(pg_relation_size(indexrelid)) as size_pretty,
-                    pg_relation_size(indexrelid) as size_bytes,
-                    idx_scan,
-                    idx_tup_read,
-                    idx_tup_fetch
-                FROM pg_stat_user_indexes 
-                WHERE idx_scan < 10  -- Low usage indexes
-                AND pg_relation_size(indexrelid) > 1024 * 1024  -- Larger than 1MB
-                ORDER BY pg_relation_size(indexrelid) DESC
+            # Left-prefix redundancy: index (a) is redundant if (a, b) exists on same table
+            prefix_query = """
+                WITH idx_cols AS (
+                    SELECT
+                        n.nspname AS schema_name,
+                        t.relname AS table_name,
+                        i.relname AS index_name,
+                        ix.indexrelid,
+                        ix.indkey::int[] AS key_cols,
+                        array_length(ix.indkey, 1) AS ncols,
+                        pg_relation_size(ix.indexrelid) AS size_bytes,
+                        pg_size_pretty(pg_relation_size(ix.indexrelid)) AS size_pretty,
+                        COALESCE(s.idx_scan, 0) AS idx_scan,
+                        COALESCE(s.idx_tup_read, 0) AS idx_tup_read,
+                        COALESCE(s.idx_tup_fetch, 0) AS idx_tup_fetch,
+                        ix.indisunique,
+                        ix.indisprimary
+                    FROM pg_index ix
+                    JOIN pg_class i ON i.oid = ix.indexrelid
+                    JOIN pg_class t ON t.oid = ix.indrelid
+                    JOIN pg_namespace n ON n.oid = t.relnamespace
+                    LEFT JOIN pg_stat_user_indexes s ON s.indexrelid = ix.indexrelid
+                    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+                      AND NOT ix.indisprimary
+                )
+                SELECT
+                    a.schema_name, a.table_name, a.index_name,
+                    a.size_pretty, a.size_bytes, a.idx_scan,
+                    a.idx_tup_read, a.idx_tup_fetch,
+                    b.index_name AS covered_by
+                FROM idx_cols a
+                JOIN idx_cols b ON a.table_name = b.table_name
+                    AND a.schema_name = b.schema_name
+                    AND a.indexrelid != b.indexrelid
+                    AND a.ncols < b.ncols
+                    AND a.key_cols = b.key_cols[1:a.ncols]
+                WHERE NOT a.indisunique
+                ORDER BY a.size_bytes DESC
                 LIMIT 20
             """
-            
-            rows = await conn.fetch(query)
+
+            rows = await conn.fetch(prefix_query)
             await conn.close()
-            
+
             recommendations = []
             for row in rows:
-                # Calculate estimated savings
                 estimated_savings_mb = row['size_bytes'] / (1024 * 1024)
-                
-                # Determine risk level based on usage
-                risk_level = "medium"
-                if row['idx_scan'] == 0:
-                    risk_level = "low"
-                elif row['idx_scan'] > 5:
-                    risk_level = "high"
-                
-                # Generate SQL fix
+
+                risk_level = "low" if row['idx_scan'] == 0 else ("high" if row['idx_scan'] > 5 else "medium")
                 sql_fix = f"DROP INDEX {row['schema_name']}.{row['index_name']};"
-                
+
                 recommendations.append({
                     'index_name': row['index_name'],
                     'table_name': row['table_name'],
@@ -198,12 +232,15 @@ class IndexAdvisorService:
                     'idx_scan': row['idx_scan'],
                     'idx_tup_read': row['idx_tup_read'],
                     'idx_tup_fetch': row['idx_tup_fetch'],
-                    'last_used': None,  # Would need more complex analysis
+                    'last_used': None,
                     'days_unused': 0,
                     'estimated_savings_mb': round(estimated_savings_mb, 2),
                     'risk_level': risk_level,
-                    'recommendation_type': 'analyze',
-                    'sql_fix': sql_fix
+                    'safety_level': 'safe',
+                    'reason': f"Left-prefix redundant: columns are a prefix of {row['covered_by']}. Safe to drop.",
+                    'recommendation_type': 'redundant',
+                    'sql_fix': sql_fix,
+                    'covered_by': row['covered_by'],
                 })
             
             return recommendations

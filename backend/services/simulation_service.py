@@ -116,9 +116,18 @@ class SimulationService:
         return candidates
 
     def _parse_indexes(self, index_sql: str) -> list:
-        """Parse multiple CREATE INDEX statements into a list."""
-        # Split by semicolon and filter empty
-        indexes = [idx.strip() for idx in index_sql.split(';') if idx.strip()]
+        """Parse and validate CREATE INDEX statements. Rejects non-CREATE INDEX SQL."""
+        import re
+        indexes = []
+        for idx in index_sql.split(';'):
+            idx = idx.strip()
+            if not idx:
+                continue
+            # Only allow CREATE [UNIQUE] INDEX [CONCURRENTLY] statements
+            if not re.match(r'^\s*CREATE\s+(UNIQUE\s+)?INDEX\s', idx, re.IGNORECASE):
+                logger.warning(f"Rejected non-CREATE INDEX statement: {idx[:100]}")
+                continue
+            indexes.append(idx)
         return indexes
 
     def _prepare_query(self, query: str) -> str:
@@ -140,6 +149,19 @@ class SimulationService:
             # Check for destructive operations
             if parsed.find(exp.Update, exp.Delete, exp.Drop, exp.Alter, exp.Create, exp.Insert):
                 return {"error": "Unsafe query detected: Only SELECT statements are allowed for rewrites"}
+
+            # Check for dangerous side-effect functions
+            DANGEROUS_FUNCTIONS = {
+                'pg_sleep', 'dblink', 'dblink_exec', 'lo_export', 'lo_import',
+                'pg_terminate_backend', 'pg_cancel_backend', 'pg_reload_conf',
+                'pg_rotate_logfile', 'set_config', 'pg_advisory_lock',
+                'pg_file_write', 'pg_read_file', 'pg_ls_dir',
+                'copy_to', 'copy_from',
+            }
+            for func in parsed.find_all(exp.Anonymous, exp.Func):
+                func_name = getattr(func, 'name', '') or ''
+                if func_name.lower() in DANGEROUS_FUNCTIONS:
+                    return {"error": f"Unsafe function detected: {func_name}() is not allowed in rewrites"}
         except Exception as e:
             return {"error": f"SQL Parsing failed: {str(e)}"}
 

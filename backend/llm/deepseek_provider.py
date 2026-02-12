@@ -77,7 +77,16 @@ class DeepSeekProvider(LLMProvider):
             )
             
             content = response.choices[0].message.content
-            
+
+            # Log token usage
+            if hasattr(response, 'usage') and response.usage:
+                u = response.usage
+                logger.info(
+                    f"[DeepSeek] Token usage: prompt={u.prompt_tokens}, "
+                    f"completion={u.completion_tokens}, total={u.total_tokens}, "
+                    f"model={self.model}"
+                )
+
             try:
                 result = json.loads(content)
                 return {

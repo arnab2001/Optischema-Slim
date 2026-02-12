@@ -3,6 +3,7 @@ import logging
 from typing import Dict, Any, List
 from datetime import datetime, timedelta, timezone
 from connection_manager import connection_manager
+from services.metric_service import MetricService
 from services.llm_service import llm_service
 from storage import save_health_result, get_setting
 from models import HealthThresholds
@@ -59,15 +60,21 @@ class HealthScanService:
         
         try:
             async with pool.acquire() as conn:
+                # Version-aware column names (PG13 renamed total_time -> total_exec_time)
+                pg_version = connection_manager.get_pg_version()
+                use_new = pg_version is not None and pg_version >= 130000
+                total_col = "total_exec_time" if use_new else "total_time"
+                mean_col = "mean_exec_time" if use_new else "mean_time"
+
                 # 1. Global Workload Baseline (scoped to current database)
-                vitals['total_db_time'] = await conn.fetchval("""
-                    SELECT SUM(total_exec_time)::float FROM pg_stat_statements
+                vitals['total_db_time'] = await conn.fetchval(f"""
+                    SELECT SUM({total_col})::float FROM pg_stat_statements
                     WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
                 """) or 0.0
 
                 # 2. Top Queries (filtered to current database and system noise)
                 vitals['top_queries'] = await conn.fetch(f"""
-                    SELECT queryid::text, query, total_exec_time::float, calls, mean_exec_time::float, rows
+                    SELECT queryid::text, query, {total_col}::float AS total_exec_time, calls, {mean_col}::float AS mean_exec_time, rows
                     FROM pg_stat_statements
                     WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
                       AND query NOT ILIKE '%%pg_switch_wal%%'
@@ -88,8 +95,8 @@ class HealthScanService:
                     SELECT schemaname, relname as table, n_live_tup as live_tuples, n_dead_tup as dead_tuples,
                         round((n_dead_tup::numeric / nullif(n_live_tup + n_dead_tup, 0)) * 100, 2)::float as dead_ratio,
                         last_autovacuum,
-                        pg_relation_size(relid) as total_bytes,
-                        pg_size_pretty(pg_relation_size(relid)) as total_size
+                        pg_total_relation_size(relid) as total_bytes,
+                        pg_size_pretty(pg_total_relation_size(relid)) as total_size
                     FROM pg_stat_user_tables 
                     WHERE n_dead_tup > 50 
                     ORDER BY dead_ratio DESC LIMIT {limit};
@@ -117,10 +124,34 @@ class HealthScanService:
                 
                 # 5. Config
                 vitals['config'] = await conn.fetch("""
-                    SELECT name as setting, setting as current_value, unit 
-                    FROM pg_settings 
+                    SELECT name as setting, setting as current_value, unit
+                    FROM pg_settings
                     WHERE name IN ('shared_buffers', 'work_mem', 'maintenance_work_mem', 'effective_cache_size', 'max_connections', 'autovacuum_vacuum_scale_factor');
                 """)
+
+                # 6. Lock Contention — blocked queries waiting on locks
+                try:
+                    vitals['lock_contention'] = await conn.fetch("""
+                        SELECT
+                            blocked.pid AS blocked_pid,
+                            blocked.query AS blocked_query,
+                            blocked.wait_event_type,
+                            blocked.wait_event,
+                            age(now(), blocked.query_start) AS wait_duration,
+                            blocker.pid AS blocker_pid,
+                            blocker.query AS blocker_query,
+                            blocker.state AS blocker_state
+                        FROM pg_stat_activity blocked
+                        JOIN LATERAL unnest(pg_blocking_pids(blocked.pid)) AS bp(pid) ON true
+                        JOIN pg_stat_activity blocker ON blocker.pid = bp.pid
+                        WHERE blocked.state = 'active'
+                          AND blocked.wait_event_type = 'Lock'
+                        ORDER BY blocked.query_start
+                        LIMIT 10
+                    """)
+                except Exception as e:
+                    logger.debug(f"Lock contention query failed (may need PG 9.6+): {e}")
+                    vitals['lock_contention'] = []
                 
         except Exception as e:
             logger.error(f"Failed to collect vitals: {e}")
@@ -245,6 +276,20 @@ class HealthScanService:
                 except:
                    pass
              
+        # Process Lock Contention
+        lock_issues = []
+        for row in vitals.get('lock_contention', []):
+            r = dict(row)
+            lock_issues.append({
+                "blocked_pid": r.get('blocked_pid'),
+                "blocked_query": (r.get('blocked_query') or '')[:200],
+                "wait_duration": str(r.get('wait_duration', '')),
+                "blocker_pid": r.get('blocker_pid'),
+                "blocker_query": (r.get('blocker_query') or '')[:200],
+                "blocker_state": r.get('blocker_state'),
+                "severity": "high",
+            })
+
         return {
             "scan_timestamp": datetime.utcnow().isoformat(),
             "health_score": 100, # Will be overridden by AI
@@ -263,11 +308,17 @@ class HealthScanService:
                 "issues": config_issues,
                 "total_settings_checked": len(vitals.get('config', []))
             },
+            "lock_contention": {
+                "checked": True,
+                "issues": lock_issues,
+                "total_blocked": len(lock_issues)
+            },
             "top_queries": [dict(q) for q in vitals.get('top_queries', [])],
             "summary": {
                 "total_bloated_tables": len(bloat_issues),
                 "total_unused_indexes": len(index_issues),
-                "total_config_issues": len(config_issues)
+                "total_config_issues": len(config_issues),
+                "total_lock_contentions": len(lock_issues)
             }
         }
 
@@ -340,6 +391,13 @@ class HealthScanService:
         for issue in config_issues:
             score -= 5
             deductions.append(f"-5 pts: Configuration issue: {issue['setting']}")
+
+        # 5. Lock Contention
+        lock_issues = rule_report.get('lock_contention', {}).get('issues', [])
+        if lock_issues:
+            lock_penalty = min(len(lock_issues) * 10, 30)
+            score -= lock_penalty
+            deductions.append(f"-{lock_penalty} pts: {len(lock_issues)} blocked query(ies) waiting on locks")
 
         return max(0, score), deductions
 
@@ -507,6 +565,24 @@ STRICT RULES FOR 'type' AND 'action_payload':
                             itype = 'INFO' # Just advisory text
                             payload = ""   # Clear payload so no button is shown
                 
+                # RULE 2: SCHEMA/CONFIG payloads must be safe SQL patterns only
+                if itype in ('SCHEMA', 'CONFIG') and payload:
+                    safe_patterns = [
+                        r'^VACUUM\b',
+                        r'^ANALYZE\b',
+                        r'^CREATE\s+INDEX\b',
+                        r'^ALTER\s+SYSTEM\s+SET\b',
+                        r'^SET\b',
+                        r'^REINDEX\b',
+                        r'^--',  # SQL comments (advisory)
+                    ]
+                    is_safe = any(re.match(p, payload.strip(), re.IGNORECASE) for p in safe_patterns)
+                    if not is_safe:
+                        # Dangerous payload — strip it and downgrade to advisory
+                        logger.warning(f"Sanitized unsafe action_payload from AI: {payload[:100]}")
+                        payload = ""
+                        itype = 'INFO'
+
                 issue['type'] = itype
                 issue['action_payload'] = payload
                 sanitized_issues.append(issue)

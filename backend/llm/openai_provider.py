@@ -67,6 +67,16 @@ class OpenAIProvider(LLMProvider):
                 response_format={"type": "json_object"}
             )
             content = response.choices[0].message.content
+
+            # Log token usage
+            if hasattr(response, 'usage') and response.usage:
+                u = response.usage
+                logger.info(
+                    f"[OpenAI] Token usage: prompt={u.prompt_tokens}, "
+                    f"completion={u.completion_tokens}, total={u.total_tokens}, "
+                    f"model={self.model}"
+                )
+
             return json.loads(content)
         except Exception as e:
             logger.error(f"OpenAI analysis failed: {e}")

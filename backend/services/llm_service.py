@@ -67,7 +67,14 @@ class LLMService:
         
         # Clean up common LLM hallucinations in JSON keys
         cleaned_result = self._clean_llm_result(result)
-        
+
+        # Validate SQL column references against schema
+        if cleaned_result.get("sql") and schema_context:
+            warnings = self._validate_sql_columns(cleaned_result["sql"], schema_context)
+            if warnings:
+                cleaned_result["_column_warnings"] = warnings
+                logger.warning(f"LLM SQL column warnings: {warnings}")
+
         # Add metadata for benchmarking/tuning (copy to avoid circular reference)
         cleaned_result["_benchmark_metadata"] = {
             "prompt": prompt,
@@ -239,6 +246,47 @@ class LLMService:
                     result["reasoning"] = f"No explanation provided by the AI model. ({debug_info})"
 
         return result
+
+    def _validate_sql_columns(self, sql: str, schema_context: str) -> list:
+        """
+        Validate that columns referenced in LLM-generated SQL exist in the schema.
+        Returns a list of warning strings for suspicious columns.
+        """
+        try:
+            # Extract column names from schema context lines like "  - col_name (type) [PK]"
+            schema_columns = set()
+            for line in schema_context.split('\n'):
+                line = line.strip()
+                if line.startswith('- ') and '(' in line:
+                    col = line[2:].split('(')[0].strip().lower()
+                    if col:
+                        schema_columns.add(col)
+
+            if not schema_columns:
+                return []
+
+            # Parse SQL and extract column references
+            sql_columns = set()
+            for stmt in sql.split(';'):
+                stmt = stmt.strip()
+                if not stmt:
+                    continue
+                try:
+                    parsed = sqlglot.parse_one(stmt)
+                    for col in parsed.find_all(exp.Column):
+                        sql_columns.add(col.name.lower())
+                except Exception:
+                    continue
+
+            # Check for columns not in schema
+            warnings = []
+            for col in sql_columns:
+                if col.lower() not in schema_columns:
+                    warnings.append(f"Column '{col}' not found in schema context")
+            return warnings
+        except Exception as e:
+            logger.debug(f"Column validation skipped: {e}")
+            return []
 
     def _extract_plan_bottlenecks(self, plan: Dict[str, Any]) -> str:
         """

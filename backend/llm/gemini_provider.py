@@ -88,7 +88,22 @@ class GeminiProvider(LLMProvider):
             )
             
             text = response.text
-            
+
+            # Log token usage
+            try:
+                meta = getattr(response, 'usage_metadata', None)
+                if meta:
+                    prompt_tokens = getattr(meta, 'prompt_token_count', 0)
+                    completion_tokens = getattr(meta, 'candidates_token_count', 0)
+                    logger.info(
+                        f"[Gemini] Token usage: prompt={prompt_tokens}, "
+                        f"completion={completion_tokens}, "
+                        f"total={prompt_tokens + completion_tokens}, "
+                        f"model={self.model}"
+                    )
+            except Exception:
+                pass
+
             # Parse JSON response
             try:
                 # Clean up markdown code blocks if present

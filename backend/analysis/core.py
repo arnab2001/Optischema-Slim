@@ -36,10 +36,15 @@ def fingerprint_query(query_text: str) -> str:
     # Replace string literals
     query = re.sub(r"'[^']*'", "'?'", query)
     query = re.sub(r'"[^"]*"', '"?"', query)
-    
-    # Replace numeric literals
+
+    # Replace numeric literals BUT preserve LIMIT/OFFSET values
+    # (so LIMIT 10 and LIMIT 1000000 remain distinct fingerprints)
     query = re.sub(r'\b\d+\.\d+\b', '?', query)  # Decimal numbers
-    query = re.sub(r'\b\d+\b', '?', query)       # Integer numbers
+    # Temporarily protect LIMIT/OFFSET values, then replace remaining integers
+    query = re.sub(r'\b(LIMIT\s+)(\d+)\b', r'\1__KEEP_\2__', query, flags=re.IGNORECASE)
+    query = re.sub(r'\b(OFFSET\s+)(\d+)\b', r'\1__KEEP_\2__', query, flags=re.IGNORECASE)
+    query = re.sub(r'\b\d+\b', '?', query)  # Replace all other integers
+    query = re.sub(r'__KEEP_(\d+)__', r'\1', query)  # Restore LIMIT/OFFSET values
     
     # Replace boolean literals
     query = re.sub(r'\b(true|false|null)\b', '?', query, flags=re.IGNORECASE)

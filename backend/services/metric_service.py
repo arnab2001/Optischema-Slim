@@ -17,7 +17,8 @@ class MetricService:
         Returns tuple of (select_clause, where_clause, order_by_expr).
         """
         pg_version = connection_manager.get_pg_version()
-        use_new_columns = not pg_version or pg_version >= 130000
+        # Default to OLD (PG12) syntax when version is unknown — safer than crashing
+        use_new_columns = pg_version is not None and pg_version >= 130000
         
         # Build SELECT clause with version-aware timing columns
         if use_new_columns:  # PostgreSQL 13+ renamed timing columns and added plan time
