@@ -68,7 +68,9 @@ class OpenAIProvider(LLMProvider):
             )
             content = response.choices[0].message.content
 
-            # Log token usage
+            result = json.loads(content)
+
+            # Capture and return token usage
             if hasattr(response, 'usage') and response.usage:
                 u = response.usage
                 logger.info(
@@ -76,8 +78,15 @@ class OpenAIProvider(LLMProvider):
                     f"completion={u.completion_tokens}, total={u.total_tokens}, "
                     f"model={self.model}"
                 )
+                result["_token_usage"] = {
+                    "prompt_tokens": u.prompt_tokens,
+                    "completion_tokens": u.completion_tokens,
+                    "total_tokens": u.total_tokens,
+                    "model": self.model,
+                    "provider": "openai"
+                }
 
-            return json.loads(content)
+            return result
         except Exception as e:
             logger.error(f"OpenAI analysis failed: {e}")
             return {"error": str(e)}

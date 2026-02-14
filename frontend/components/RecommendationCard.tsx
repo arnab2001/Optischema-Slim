@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Play, RotateCcw, CheckCircle, XCircle, Clock, AlertTriangle, Zap } from 'lucide-react';
+import { Play, RotateCcw, CheckCircle, XCircle, Clock, AlertTriangle, Zap, ShoppingCart, Check } from 'lucide-react';
 import { BenchmarkModal } from './BenchmarkModal';
+import { useCartStore } from '@/store/cartStore';
 
 interface RecommendationCardProps {
   recommendation: any;
@@ -481,7 +482,147 @@ export function RecommendationCard({
       <p className="text-sm text-muted-foreground line-clamp-3 mb-3">
         {description}
       </p>
-      
+
+      {/* Confidence Meter */}
+      {confidence > 0 && (
+        <div className="mb-3">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${
+                  confidence >= 80 ? 'bg-green-500' : confidence >= 50 ? 'bg-yellow-500' : 'bg-red-500'
+                }`}
+                style={{ width: `${confidence}%` }}
+              />
+            </div>
+            <span className={`text-[10px] font-bold ${
+              confidence >= 80 ? 'text-green-600' : confidence >= 50 ? 'text-yellow-600' : 'text-red-600'
+            }`}>
+              {confidence >= 80 ? 'High' : confidence >= 50 ? 'Medium' : 'Low'} ({confidence}%)
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Why this? Expandable section */}
+      {(recommendation.reasoning || recommendation.confidence_factors) && (
+        <details className="mb-3 group">
+          <summary className="text-xs text-blue-600 hover:text-blue-500 cursor-pointer font-medium">
+            Why this recommendation?
+          </summary>
+          <div className="mt-2 p-2.5 bg-slate-50 dark:bg-slate-800/50 rounded-lg text-xs space-y-2">
+            {recommendation.reasoning && (
+              <p className="text-muted-foreground leading-relaxed">{recommendation.reasoning}</p>
+            )}
+            {recommendation.confidence_factors && recommendation.confidence_factors.length > 0 && (
+              <ul className="space-y-1">
+                {recommendation.confidence_factors.map((factor: string, i: number) => (
+                  <li key={i} className="flex items-start gap-1.5 text-muted-foreground">
+                    <span className="text-green-500 mt-0.5 flex-shrink-0">&#x2713;</span>
+                    {factor}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {recommendation.verification_status && (
+              <div className="pt-1.5 border-t border-slate-200 dark:border-slate-700">
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                  recommendation.verification_status === 'verified' ? 'bg-green-100 text-green-700' :
+                  recommendation.verification_status === 'estimated' ? 'bg-yellow-100 text-yellow-700' :
+                  'bg-blue-100 text-blue-700'
+                }`}>
+                  {recommendation.verification_status?.toUpperCase()}
+                </span>
+              </div>
+            )}
+          </div>
+        </details>
+      )}
+
+      {/* Workload Impact */}
+      {recommendation.workload_impact && recommendation.workload_impact.tested_queries > 0 && (
+        <details className="mb-3 group">
+          <summary className="text-xs text-purple-600 hover:text-purple-500 cursor-pointer font-medium flex items-center gap-1">
+            <Zap className="w-3 h-3" />
+            Workload Impact ({recommendation.workload_impact.tested_queries} queries tested)
+          </summary>
+          <div className="mt-2 p-2.5 bg-purple-50 dark:bg-purple-900/20 rounded-lg text-xs space-y-2">
+            {/* Summary */}
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-green-600 font-bold">↑ {recommendation.workload_impact.improved}</span>
+                <span className="text-muted-foreground">improved</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-600 font-bold">− {recommendation.workload_impact.neutral}</span>
+                <span className="text-muted-foreground">neutral</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-red-600 font-bold">↓ {recommendation.workload_impact.regressed}</span>
+                <span className="text-muted-foreground">regressed</span>
+              </div>
+            </div>
+
+            {/* Warning if regressions */}
+            {recommendation.workload_impact.regressed > 0 && (
+              <div className="p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-red-700 dark:text-red-400 flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <span>
+                  This index may hurt {recommendation.workload_impact.regressed} other {recommendation.workload_impact.regressed === 1 ? 'query' : 'queries'}.
+                  Review workload details before applying.
+                </span>
+              </div>
+            )}
+
+            {/* Details table */}
+            {recommendation.workload_impact.details && recommendation.workload_impact.details.length > 0 && (
+              <details className="mt-2">
+                <summary className="text-xs text-purple-600 hover:text-purple-500 cursor-pointer">
+                  View query-by-query breakdown
+                </summary>
+                <div className="mt-2 overflow-x-auto">
+                  <table className="w-full text-[10px]">
+                    <thead className="border-b border-purple-200 dark:border-purple-800">
+                      <tr className="text-muted-foreground">
+                        <th className="text-left py-1">Query</th>
+                        <th className="text-right py-1">Calls</th>
+                        <th className="text-right py-1">Before</th>
+                        <th className="text-right py-1">After</th>
+                        <th className="text-right py-1">Change</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-purple-100 dark:divide-purple-900/50">
+                      {recommendation.workload_impact.details.slice(0, 10).map((detail: any, i: number) => (
+                        <tr key={i}>
+                          <td className="py-1 font-mono truncate max-w-[200px]" title={detail.query}>
+                            {detail.query}
+                          </td>
+                          <td className="py-1 text-right">{detail.calls}</td>
+                          <td className="py-1 text-right">{detail.cost_before.toFixed(0)}</td>
+                          <td className="py-1 text-right">{detail.cost_after.toFixed(0)}</td>
+                          <td className={`py-1 text-right font-bold ${
+                            detail.status === 'improved' ? 'text-green-600' :
+                            detail.status === 'regressed' ? 'text-red-600' :
+                            'text-gray-600'
+                          }`}>
+                            {detail.improvement_percent > 0 ? '+' : ''}{detail.improvement_percent.toFixed(1)}%
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {recommendation.workload_impact.details.length > 10 && (
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Showing top 10 of {recommendation.workload_impact.details.length} tested queries
+                    </p>
+                  )}
+                </div>
+              </details>
+            )}
+          </div>
+        </details>
+      )}
+
       {getBenchmarkResults()}
       
       <div className="mt-3 flex items-center justify-between">
@@ -490,6 +631,41 @@ export function RecommendationCard({
         </span>
         
         <div className="flex items-center gap-2">
+          {/* Add to Cart button for executable recommendations */}
+          {recommendation.sql_fix && !isApplied && (() => {
+            const { addItem, isInCart } = useCartStore.getState();
+            const inCart = useCartStore((s) => s.isInCart(recommendation.sql_fix));
+            return (
+              <button
+                onClick={() => {
+                  if (!inCart) {
+                    const wi = recommendation.workload_impact;
+                    const impactNote = wi && wi.tested_queries > 0
+                      ? ` | Workload: ${wi.improved} improved, ${wi.regressed} regressed, ${wi.neutral} neutral`
+                      : '';
+                    addItem({
+                      id: recommendation.id || crypto.randomUUID(),
+                      type: type === 'INDEX' || type === 'index' ? 'index' : type === 'REWRITE' || type === 'rewrite' ? 'rewrite' : 'drop',
+                      sql: recommendation.sql_fix,
+                      description: `${title}${impactNote}`,
+                      table: recommendation.table_name || '',
+                      estimatedImprovement: estimatedSavings,
+                      source: 'analysis',
+                    });
+                  }
+                }}
+                className={`px-3 py-1 text-xs rounded flex items-center gap-1 ${
+                  inCart
+                    ? 'bg-blue-100 text-blue-700 cursor-default'
+                    : 'bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200'
+                }`}
+              >
+                {inCart ? <Check className="w-3 h-3" /> : <ShoppingCart className="w-3 h-3" />}
+                {inCart ? 'In Cart' : 'Add to Cart'}
+              </button>
+            );
+          })()}
+
           {/* Show Apply button for executable recommendations */}
           {recommendation.sql_fix && !isApplied && (
             <button

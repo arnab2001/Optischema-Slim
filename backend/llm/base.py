@@ -31,3 +31,11 @@ class LLMProvider(ABC):
         Analyze a query and return a structured JSON response.
         """
         pass
+
+    async def complete(self, prompt: str) -> Dict[str, Any]:
+        """
+        Generic JSON completion — returns LLM response as-is without reshaping.
+        Default falls back to analyze(). Providers that reshape in analyze()
+        should override this.
+        """
+        return await self.analyze(prompt)

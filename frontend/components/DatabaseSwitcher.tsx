@@ -512,7 +512,7 @@ export default function DatabaseSwitcher() {
                     <CheckCircle className="w-4 h-4 text-green-600" />
                     <span className="text-sm font-medium text-green-800">Currently Connected</span>
                     {connectionStatus.saved_connection_id && (
-                      <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" title="Saved connection" />
+                      <span title="Saved connection"><Star className="w-3 h-3 text-yellow-500 fill-yellow-500" /></span>
                     )}
                   </div>
                   {!connectionStatus.saved_connection_id && (

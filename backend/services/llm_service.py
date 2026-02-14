@@ -11,6 +11,7 @@ import sqlglot
 from sqlglot import exp
 from config import settings
 from llm.factory import LLMFactory
+from storage import save_token_usage
 
 logger = logging.getLogger(__name__)
 
@@ -18,21 +19,36 @@ class LLMService:
     async def get_completion(self, prompt: str, json_mode: bool = True) -> Dict[str, Any]:
         """
         Generic completion method for any prompt.
+        Uses provider.complete() which returns raw JSON without reshaping
+        into category/reasoning/sql (unlike analyze() which is query-specific).
         """
         provider = await LLMFactory.get_provider_async()
-        
+
         # Log prompt
         try:
             with open("last_llm_prompt_generic.txt", "w") as f:
                 f.write(prompt)
         except:
             pass
-            
-        result = await provider.analyze(prompt)
-        
-        if json_mode:
-            return self._clean_llm_result(result)
-            
+
+        result = await provider.complete(prompt)
+
+        # Extract and save token usage if present
+        if "_token_usage" in result:
+            try:
+                usage = result["_token_usage"]
+                await save_token_usage(
+                    provider=usage.get("provider", "unknown"),
+                    model=usage.get("model", "unknown"),
+                    prompt_tokens=usage.get("prompt_tokens", 0),
+                    completion_tokens=usage.get("completion_tokens", 0),
+                    total_tokens=usage.get("total_tokens", 0)
+                )
+            except Exception as e:
+                logger.warning(f"Failed to save token usage: {e}")
+
+        # Don't run _clean_llm_result for generic completions —
+        # it's designed for query analysis and would mangle custom JSON structures
         return result
 
     async def analyze_query(self, query: str, schema_context: str, plan_context: Dict[str, Any]) -> Dict[str, Any]:
@@ -64,7 +80,21 @@ class LLMService:
             logger.warning(f"Failed to log prompt: {e}")
 
         result = await provider.analyze(prompt)
-        
+
+        # Extract and save token usage if present
+        if "_token_usage" in result:
+            try:
+                usage = result["_token_usage"]
+                await save_token_usage(
+                    provider=usage.get("provider", "unknown"),
+                    model=usage.get("model", "unknown"),
+                    prompt_tokens=usage.get("prompt_tokens", 0),
+                    completion_tokens=usage.get("completion_tokens", 0),
+                    total_tokens=usage.get("total_tokens", 0)
+                )
+            except Exception as e:
+                logger.warning(f"Failed to save token usage: {e}")
+
         # Clean up common LLM hallucinations in JSON keys
         cleaned_result = self._clean_llm_result(result)
 

@@ -1,13 +1,14 @@
 "use client";
 
 import { useAppStore } from "@/store/appStore";
-import { X, Copy, ExternalLink, Code, BarChart3, Table2, Zap, Info, Play } from "lucide-react";
+import { X, Copy, ExternalLink, Code, BarChart3, Table2, Zap, Info, Play, ShoppingCart, Check } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { PlanNode } from "./plan-node";
 import { VerificationCard } from "./verification-card";
+import { useCartStore } from "@/store/cartStore";
 
 interface QueryMetric {
     queryid: string;
@@ -26,6 +27,126 @@ interface InspectorSheetProps {
 
 type Tab = "sql" | "plan" | "stats";
 
+// ── Plan Summary Bar ─────────────────────────────────────────────────────────
+
+interface CostBreakdown {
+    scan: number;
+    join: number;
+    sort: number;
+    aggregate: number;
+    other: number;
+}
+
+function walkPlan(node: any, totals: CostBreakdown, bottleneck: { type: string; table: string; cost: number }) {
+    const type: string = node["Node Type"] || "";
+    const cost = node["Total Cost"] || 0;
+    const childrenCost = (node.Plans || []).reduce((s: number, c: any) => s + (c["Total Cost"] || 0), 0);
+    // Exclusive cost = this node's cost minus what children contributed
+    const exclusive = Math.max(0, cost - childrenCost);
+
+    if (type.includes("Scan") || type.includes("Index")) totals.scan += exclusive;
+    else if (type.includes("Join")) totals.join += exclusive;
+    else if (type.includes("Sort")) totals.sort += exclusive;
+    else if (type.includes("Aggregate") || type.includes("Group")) totals.aggregate += exclusive;
+    else totals.other += exclusive;
+
+    if (cost > bottleneck.cost) {
+        bottleneck.type = type;
+        bottleneck.table = node["Relation Name"] || "";
+        bottleneck.cost = cost;
+    }
+
+    for (const child of node.Plans || []) {
+        walkPlan(child, totals, bottleneck);
+    }
+}
+
+function PlanSummaryBar({ plan, analysisResult }: { plan: any; analysisResult: any }) {
+    const totalCost = plan["Total Cost"] || 1;
+    const totals: CostBreakdown = { scan: 0, join: 0, sort: 0, aggregate: 0, other: 0 };
+    const bottleneck = { type: "", table: "", cost: 0 };
+    walkPlan(plan, totals, bottleneck);
+
+    const pct = (val: number) => totalCost > 0 ? ((val / totalCost) * 100).toFixed(0) : "0";
+    const hasSuggestion = analysisResult?.suggestion?.sql;
+
+    return (
+        <div className="px-4 py-3 border-b border-slate-800 bg-slate-900/60 space-y-2">
+            {/* Cost Breakdown */}
+            <div className="flex items-center gap-3 text-[10px] font-mono">
+                <span className="text-slate-500 uppercase font-bold tracking-wider">Cost</span>
+                <div className="flex-1 h-2 rounded-full overflow-hidden flex bg-slate-800">
+                    {totals.scan > 0 && <div className="bg-blue-500 h-full" style={{ width: `${pct(totals.scan)}%` }} title={`Scan: ${pct(totals.scan)}%`} />}
+                    {totals.join > 0 && <div className="bg-yellow-500 h-full" style={{ width: `${pct(totals.join)}%` }} title={`Join: ${pct(totals.join)}%`} />}
+                    {totals.sort > 0 && <div className="bg-purple-500 h-full" style={{ width: `${pct(totals.sort)}%` }} title={`Sort: ${pct(totals.sort)}%`} />}
+                    {totals.aggregate > 0 && <div className="bg-pink-500 h-full" style={{ width: `${pct(totals.aggregate)}%` }} title={`Aggregate: ${pct(totals.aggregate)}%`} />}
+                    {totals.other > 0 && <div className="bg-slate-600 h-full" style={{ width: `${pct(totals.other)}%` }} title={`Other: ${pct(totals.other)}%`} />}
+                </div>
+                <span className="text-slate-400 tabular-nums">{totalCost.toFixed(0)}</span>
+            </div>
+
+            {/* Breakdown Labels */}
+            <div className="flex items-center gap-4 text-[10px] font-mono text-slate-500">
+                {totals.scan > 0 && <span><span className="text-blue-400 font-bold">{pct(totals.scan)}%</span> scan</span>}
+                {totals.join > 0 && <span><span className="text-yellow-400 font-bold">{pct(totals.join)}%</span> join</span>}
+                {totals.sort > 0 && <span><span className="text-purple-400 font-bold">{pct(totals.sort)}%</span> sort</span>}
+                {totals.aggregate > 0 && <span><span className="text-pink-400 font-bold">{pct(totals.aggregate)}%</span> agg</span>}
+            </div>
+
+            {/* Bottleneck Highlight */}
+            {bottleneck.type && (
+                <div className="flex items-center justify-between">
+                    <div className="text-[10px] text-slate-400">
+                        Top bottleneck: <span className="text-red-400 font-bold">{bottleneck.type}</span>
+                        {bottleneck.table && <span className="text-slate-500"> on {bottleneck.table}</span>}
+                    </div>
+                    {hasSuggestion && (
+                        <InspectorCartButton analysisResult={analysisResult} query={null} />
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function InspectorCartButton({ analysisResult, query }: { analysisResult: any; query: QueryMetric | null }) {
+    const { addItem } = useCartStore();
+    const sql = analysisResult?.suggestion?.sql;
+    const inCart = useCartStore((s) => sql ? s.isInCart(sql) : false);
+
+    if (!sql) return null;
+
+    const category = analysisResult?.analysis_type || analysisResult?.suggestion?.category || "INDEX";
+
+    return (
+        <button
+            onClick={() => {
+                if (!inCart && sql) {
+                    const wi = analysisResult?.workload_impact;
+                    const impactNote = wi && wi.tested_queries > 0
+                        ? ` | Workload: ${wi.improved} improved, ${wi.regressed} regressed, ${wi.neutral} neutral`
+                        : '';
+                    addItem({
+                        id: crypto.randomUUID(),
+                        type: category === "INDEX" ? "index" : category === "REWRITE" ? "rewrite" : "drop",
+                        sql,
+                        description: `${analysisResult?.suggestion?.reasoning?.slice(0, 100) || "Query optimization"}${impactNote}`,
+                        table: "",
+                        estimatedImprovement: analysisResult?.simulation?.improvement_percent,
+                        source: "analysis",
+                    });
+                }
+            }}
+            className={`text-xs flex items-center gap-1 ${
+                inCart ? "text-blue-400 cursor-default" : "text-green-500 hover:text-green-400"
+            }`}
+        >
+            {inCart ? <Check className="w-3 h-3" /> : <ShoppingCart className="w-3 h-3" />}
+            {inCart ? "In Cart" : "Add to Cart"}
+        </button>
+    );
+}
+
 export function InspectorSheet({ query, isOpen, onClose }: InspectorSheetProps) {
     const { theme } = useAppStore();
     const isDark = theme === "dark";
@@ -42,12 +163,35 @@ export function InspectorSheet({ query, isOpen, onClose }: InspectorSheetProps) 
 
     const apiUrl = import.meta.env.VITE_API_URL || "";
 
-    // Reset state when query changes
+    // Auto-load cached analysis when query changes (hits backend cache, no LLM cost)
     useEffect(() => {
-        setAnalysisResult(null);
         setAnalysisError(null);
         setVerificationResult(null);
         setActiveTab("sql");
+
+        if (query?.query) {
+            // Try to load cached result only (cache_only=true means no LLM call, no cost)
+            setAnalysisResult(null);
+            (async () => {
+                try {
+                    const res = await fetch(`${apiUrl}/api/analysis/analyze`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ query: query.query, cache_only: true }),
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data._cached && !data._no_result) {
+                            setAnalysisResult(data);
+                        }
+                    }
+                } catch {
+                    // Silently fail — user can click Analyze manually
+                }
+            })();
+        } else {
+            setAnalysisResult(null);
+        }
     }, [query?.queryid]);
 
     // Handle escape key
@@ -74,24 +218,24 @@ export function InspectorSheet({ query, isOpen, onClose }: InspectorSheetProps) 
         return formatted.trim();
     };
 
-    const runAnalysis = async () => {
+    const runAnalysis = async (refresh = false) => {
         if (!query) return;
 
         setAnalyzing(true);
         setAnalysisError(null);
-        setAnalysisResult(null);
+        if (refresh) setAnalysisResult(null);
 
         try {
             const res = await fetch(`${apiUrl}/api/analysis/analyze`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ query: query.query }),
+                body: JSON.stringify({ query: query.query, refresh }),
             });
 
             if (res.ok) {
                 const data = await res.json();
                 setAnalysisResult(data);
-                toast.success("Analysis complete");
+                toast.success(data._cached ? "Loaded from cache" : "Analysis complete");
             } else {
                 const errorData = await res.json().catch(() => ({ detail: "Analysis failed" }));
                 const detail = errorData.detail || {};
@@ -289,7 +433,7 @@ export function InspectorSheet({ query, isOpen, onClose }: InspectorSheetProps) 
 
                             {/* Analyze Button */}
                             <button
-                                onClick={runAnalysis}
+                                onClick={() => runAnalysis()}
                                 disabled={analyzing}
                                 className={`w-full py-3 rounded-lg font-medium flex items-center justify-center gap-2 disabled:opacity-50 ${analysisError
                                     ? isDark
@@ -348,6 +492,30 @@ export function InspectorSheet({ query, isOpen, onClose }: InspectorSheetProps) 
                                             }`}>
                                             {analysisResult.verification_status?.toUpperCase()}
                                         </span>
+                                        {analysisResult._cached && (
+                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                                                isDark ? "bg-slate-700 text-slate-400" : "bg-slate-100 text-slate-500"
+                                            }`}>
+                                                cached {analysisResult._cache_age_seconds != null
+                                                    ? analysisResult._cache_age_seconds < 60
+                                                        ? `${analysisResult._cache_age_seconds}s ago`
+                                                        : `${Math.floor(analysisResult._cache_age_seconds / 60)}m ago`
+                                                    : ""}
+                                            </span>
+                                        )}
+                                        {analysisResult._cached && (
+                                            <button
+                                                onClick={() => runAnalysis(true)}
+                                                disabled={analyzing}
+                                                className={`text-[10px] font-medium px-2 py-0.5 rounded-full transition-colors ${
+                                                    isDark
+                                                        ? "text-blue-400 hover:bg-blue-900/30"
+                                                        : "text-blue-600 hover:bg-blue-50"
+                                                }`}
+                                            >
+                                                Re-analyze
+                                            </button>
+                                        )}
                                         <div className="relative group">
                                             <Info className={`w-3.5 h-3.5 cursor-help ${isDark ? "text-slate-500 group-hover:text-blue-400" : "text-slate-400 group-hover:text-blue-500"} transition-colors`} />
                                             <div className={`absolute left-0 top-6 w-80 p-3 rounded-lg border shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 ${isDark ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200"
@@ -378,6 +546,46 @@ export function InspectorSheet({ query, isOpen, onClose }: InspectorSheetProps) 
                                         {analysisResult.suggestion?.reasoning}
                                     </p>
 
+                                    {/* Confidence Score & Factors */}
+                                    {analysisResult.confidence_score != null && (
+                                        <div className="mt-3 space-y-2">
+                                            <div className="flex items-center gap-2">
+                                                <div className="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                                                    <div
+                                                        className={`h-full rounded-full ${
+                                                            analysisResult.confidence_score >= 80 ? 'bg-green-500' :
+                                                            analysisResult.confidence_score >= 50 ? 'bg-yellow-500' : 'bg-red-500'
+                                                        }`}
+                                                        style={{ width: `${analysisResult.confidence_score}%` }}
+                                                    />
+                                                </div>
+                                                <span className={`text-[10px] font-bold ${
+                                                    analysisResult.confidence_score >= 80 ? 'text-green-400' :
+                                                    analysisResult.confidence_score >= 50 ? 'text-yellow-400' : 'text-red-400'
+                                                }`}>
+                                                    {analysisResult.confidence_score >= 80 ? 'High' :
+                                                     analysisResult.confidence_score >= 50 ? 'Medium' : 'Low'} Confidence ({analysisResult.confidence_score}%)
+                                                </span>
+                                            </div>
+
+                                            {analysisResult.confidence_factors && analysisResult.confidence_factors.length > 0 && (
+                                                <details className="group">
+                                                    <summary className={`text-xs cursor-pointer font-medium ${isDark ? "text-blue-400 hover:text-blue-300" : "text-blue-600 hover:text-blue-500"}`}>
+                                                        Why this recommendation?
+                                                    </summary>
+                                                    <ul className={`mt-1.5 space-y-1 text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                                                        {analysisResult.confidence_factors.map((factor: string, i: number) => (
+                                                            <li key={i} className="flex items-start gap-1.5">
+                                                                <span className="text-green-500 mt-0.5 flex-shrink-0">&#x2713;</span>
+                                                                {factor}
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                </details>
+                                            )}
+                                        </div>
+                                    )}
+
                                     {analysisResult.simulation && (
                                         <div className="mt-4 grid grid-cols-3 gap-4">
                                             <div className="text-center">
@@ -406,12 +614,15 @@ export function InspectorSheet({ query, isOpen, onClose }: InspectorSheetProps) 
                                             <div className={`rounded-lg overflow-hidden ${isDark ? "bg-slate-900" : "bg-slate-800"}`}>
                                                 <div className="flex items-center justify-between px-3 py-2">
                                                     <span className="text-xs text-slate-500">Suggested SQL</span>
-                                                    <button
-                                                        onClick={() => copyToClipboard(analysisResult.suggestion.sql, "SQL")}
-                                                        className="text-xs text-blue-500 hover:text-blue-400"
-                                                    >
-                                                        Copy
-                                                    </button>
+                                                    <div className="flex items-center gap-2">
+                                                        <InspectorCartButton analysisResult={analysisResult} query={query} />
+                                                        <button
+                                                            onClick={() => copyToClipboard(analysisResult.suggestion.sql, "SQL")}
+                                                            className="text-xs text-blue-500 hover:text-blue-400"
+                                                        >
+                                                            Copy
+                                                        </button>
+                                                    </div>
                                                 </div>
                                                 <div className="text-xs">
                                                     <SyntaxHighlighter
@@ -468,13 +679,17 @@ export function InspectorSheet({ query, isOpen, onClose }: InspectorSheetProps) 
                         <div className="p-0 h-full">
                             {analysisResult?.original_plan ? (
                                 <div className={`h-full overflow-auto bg-black border-t ${isDark ? "border-slate-800" : "border-slate-200"}`}>
+                                    {/* Plan Summary Bar */}
+                                    <PlanSummaryBar plan={analysisResult.original_plan} analysisResult={analysisResult} />
+
                                     <div className="p-4">
                                         <div className="flex items-center justify-between mb-4">
                                             <h3 className="text-[10px] uppercase font-bold tracking-widest text-slate-500">Execution Plan</h3>
                                             <div className="flex items-center gap-4 text-[10px] font-mono text-slate-500">
-                                                <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Read</div>
-                                                <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-yellow-500" /> Join</div>
-                                                <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-purple-500" /> Sort</div>
+                                                <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-green-500" /> 0-10%</div>
+                                                <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-yellow-500" /> 10-30%</div>
+                                                <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-orange-500" /> 30-60%</div>
+                                                <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-red-500" /> 60%+</div>
                                             </div>
                                         </div>
                                         <PlanNode node={analysisResult.original_plan} />

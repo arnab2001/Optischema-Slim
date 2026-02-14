@@ -98,6 +98,47 @@ async def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS token_usage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                provider TEXT NOT NULL,
+                model TEXT NOT NULL,
+                prompt_tokens INTEGER NOT NULL,
+                completion_tokens INTEGER NOT NULL,
+                total_tokens INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS index_decommission (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                database_name TEXT NOT NULL,
+                schema_name TEXT NOT NULL,
+                table_name TEXT NOT NULL,
+                index_name TEXT NOT NULL,
+                stage TEXT NOT NULL DEFAULT 'monitoring',
+                usefulness_score FLOAT NOT NULL DEFAULT 0,
+                idx_scan_at_start INTEGER NOT NULL DEFAULT 0,
+                idx_scan_latest INTEGER NOT NULL DEFAULT 0,
+                size_bytes INTEGER NOT NULL DEFAULT 0,
+                write_overhead_ratio FLOAT NOT NULL DEFAULT 0,
+                scan_rate_per_day FLOAT NOT NULL DEFAULT 0,
+                is_constraint INTEGER NOT NULL DEFAULT 0,
+                started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                stage_changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                notes TEXT,
+                UNIQUE(database_name, schema_name, index_name)
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS index_decommission_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                decommission_id INTEGER NOT NULL,
+                idx_scan INTEGER NOT NULL DEFAULT 0,
+                snapshot_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (decommission_id) REFERENCES index_decommission(id) ON DELETE CASCADE
+            )
+        """)
         await db.commit()
     logger.info(f"Initialized SQLite database at {DB_PATH} with WAL mode enabled")
 
@@ -391,14 +432,164 @@ async def enforce_health_retention(keep_n: int = 10):
             rows = await cursor.fetchall()
             if not rows:
                 return
-            
+
             # The last ID we keep is the cutoff
             oldest_id_to_keep = rows[-1][0]
-            
+
             # Delete anything older (smaller ID) than that, or simply NOT IN the list
-            # A cleaner way is DELETE WHERE id NOT IN (SELECT id FROM ... LIMIT N) 
+            # A cleaner way is DELETE WHERE id NOT IN (SELECT id FROM ... LIMIT N)
             # but sqlite support for LIMIT in subqueries can be tricky in older versions.
             # We'll use the ID comparison assuming auto-increment.
             await db.execute("DELETE FROM health_results WHERE id < ?", (oldest_id_to_keep,))
             await db.commit()
+
+# Token usage tracking
+async def save_token_usage(provider: str, model: str, prompt_tokens: int, completion_tokens: int, total_tokens: int):
+    """Save token usage from an LLM call."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            INSERT INTO token_usage (provider, model, prompt_tokens, completion_tokens, total_tokens)
+            VALUES (?, ?, ?, ?, ?)
+        """, (provider, model, prompt_tokens, completion_tokens, total_tokens))
+        await db.commit()
+
+async def get_token_usage_stats() -> Dict[str, Any]:
+    """Get cumulative token usage statistics."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+
+        # Total stats
+        async with db.execute("""
+            SELECT
+                SUM(prompt_tokens) as total_prompt,
+                SUM(completion_tokens) as total_completion,
+                SUM(total_tokens) as total,
+                COUNT(*) as call_count
+            FROM token_usage
+        """) as cursor:
+            row = await cursor.fetchone()
+            stats = {
+                "total_prompt_tokens": row["total_prompt"] or 0,
+                "total_completion_tokens": row["total_completion"] or 0,
+                "total_tokens": row["total"] or 0,
+                "total_calls": row["call_count"] or 0
+            }
+
+        # Per-provider breakdown
+        async with db.execute("""
+            SELECT
+                provider,
+                SUM(total_tokens) as tokens,
+                COUNT(*) as calls
+            FROM token_usage
+            GROUP BY provider
+        """) as cursor:
+            rows = await cursor.fetchall()
+            stats["by_provider"] = {row["provider"]: {"tokens": row["tokens"], "calls": row["calls"]} for row in rows}
+
+        # Recent calls (last 10)
+        async with db.execute("""
+            SELECT provider, model, prompt_tokens, completion_tokens, total_tokens, created_at
+            FROM token_usage
+            ORDER BY created_at DESC
+            LIMIT 10
+        """) as cursor:
+            rows = await cursor.fetchall()
+            stats["recent_calls"] = [dict(row) for row in rows]
+
+        return stats
+
+async def reset_token_usage():
+    """Clear all token usage records."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM token_usage")
+        await db.commit()
+
+
+# ── Index Decommission Tracking ──────────────────────────────────────────────
+
+async def save_decommission_entry(entry: Dict[str, Any]):
+    """Create or update an index decommission tracking entry."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            INSERT INTO index_decommission (
+                database_name, schema_name, table_name, index_name,
+                stage, usefulness_score, idx_scan_at_start, idx_scan_latest,
+                size_bytes, write_overhead_ratio, scan_rate_per_day,
+                is_constraint, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(database_name, schema_name, index_name) DO UPDATE SET
+                usefulness_score = excluded.usefulness_score,
+                idx_scan_latest = excluded.idx_scan_latest,
+                size_bytes = excluded.size_bytes,
+                write_overhead_ratio = excluded.write_overhead_ratio,
+                scan_rate_per_day = excluded.scan_rate_per_day
+        """, (
+            entry['database_name'], entry['schema_name'], entry['table_name'],
+            entry['index_name'], entry.get('stage', 'monitoring'),
+            entry.get('usefulness_score', 0), entry.get('idx_scan_at_start', 0),
+            entry.get('idx_scan_latest', 0), entry.get('size_bytes', 0),
+            entry.get('write_overhead_ratio', 0), entry.get('scan_rate_per_day', 0),
+            entry.get('is_constraint', 0), entry.get('notes', '')
+        ))
+        await db.commit()
+
+
+async def update_decommission_stage(decommission_id: int, new_stage: str, notes: str = ""):
+    """Advance or revert a decommission entry to a new stage."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            UPDATE index_decommission
+            SET stage = ?, stage_changed_at = CURRENT_TIMESTAMP, notes = COALESCE(NULLIF(?, ''), notes)
+            WHERE id = ?
+        """, (new_stage, notes, decommission_id))
+        await db.commit()
+
+
+async def save_decommission_snapshot(decommission_id: int, idx_scan: int):
+    """Record a point-in-time scan count snapshot for monitoring."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            INSERT INTO index_decommission_snapshots (decommission_id, idx_scan)
+            VALUES (?, ?)
+        """, (decommission_id, idx_scan))
+        await db.commit()
+
+
+async def get_decommission_entries(database_name: str = None) -> List[Dict[str, Any]]:
+    """Get all decommission tracking entries, optionally filtered by database."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        if database_name:
+            async with db.execute(
+                "SELECT * FROM index_decommission WHERE database_name = ? ORDER BY usefulness_score ASC",
+                (database_name,)
+            ) as cursor:
+                rows = await cursor.fetchall()
+        else:
+            async with db.execute(
+                "SELECT * FROM index_decommission ORDER BY usefulness_score ASC"
+            ) as cursor:
+                rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
+async def get_decommission_snapshots(decommission_id: int) -> List[Dict[str, Any]]:
+    """Get scan count snapshots for a decommission entry."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM index_decommission_snapshots WHERE decommission_id = ? ORDER BY snapshot_at ASC",
+            (decommission_id,)
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
+async def delete_decommission_entry(decommission_id: int):
+    """Remove a decommission entry and its snapshots."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM index_decommission_snapshots WHERE decommission_id = ?", (decommission_id,))
+        await db.execute("DELETE FROM index_decommission WHERE id = ?", (decommission_id,))
+        await db.commit()
 

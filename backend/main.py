@@ -28,15 +28,30 @@ logger = logging.getLogger(__name__)
 start_time = time.time()
 
 
+async def _decommission_snapshot_loop():
+    """Background task: take decommission snapshots every 24 hours."""
+    import asyncio
+    while True:
+        await asyncio.sleep(24 * 60 * 60)  # 24 hours
+        try:
+            pool = await connection_manager.get_pool()
+            if pool:
+                from services.schema_health_service import schema_health_service
+                result = await schema_health_service.refresh_decommission_snapshots()
+                logger.info(f"Auto decommission snapshot: {result}")
+        except Exception as e:
+            logger.warning(f"Auto decommission snapshot failed: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     # Startup
     logger.info("Starting OptiSchema backend...")
-    
+
     # Initialize SQLite database
     await init_db()
-    
+
     # Auto-connect if DATABASE_URL is provided (e.g. for Quickstart Demo)
     if settings.database_url:
         logger.info(f"Auto-connecting to database from environment: {settings.database_url}")
@@ -48,18 +63,23 @@ async def lifespan(app: FastAPI):
     else:
         # Target database connection will be established when user provides credentials
         logger.info("Target database connection will be established when user provides credentials")
-    
+
+    # Start background task for decommission snapshots (every 24h)
+    import asyncio
+    snapshot_task = asyncio.create_task(_decommission_snapshot_loop())
+
     logger.info("OptiSchema backend started successfully")
-    
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down OptiSchema backend...")
-    
+    snapshot_task.cancel()
+
     # Close target database connection pool
     await connection_manager.disconnect()
     logger.info("Target database connection pool closed")
-    
+
     logger.info("OptiSchema backend shutdown complete")
 
 
@@ -83,7 +103,7 @@ app.add_middleware(
 )
 
 # Import routers
-from routers import metrics, analysis, connection, settings as settings_router, health, ai_analysis
+from routers import metrics, analysis, connection, settings as settings_router, health, ai_analysis, cart
 
 # Include routers
 app.include_router(metrics.router)
@@ -92,6 +112,7 @@ app.include_router(connection.router, prefix="/api/connection", tags=["connectio
 app.include_router(settings_router.router)
 app.include_router(health.router)
 app.include_router(ai_analysis.router)
+app.include_router(cart.router)
 
 
 @app.get("/api")

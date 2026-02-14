@@ -89,7 +89,8 @@ class GeminiProvider(LLMProvider):
             
             text = response.text
 
-            # Log token usage
+            # Capture token usage
+            token_usage = None
             try:
                 meta = getattr(response, 'usage_metadata', None)
                 if meta:
@@ -101,6 +102,13 @@ class GeminiProvider(LLMProvider):
                         f"total={prompt_tokens + completion_tokens}, "
                         f"model={self.model}"
                     )
+                    token_usage = {
+                        "prompt_tokens": prompt_tokens,
+                        "completion_tokens": completion_tokens,
+                        "total_tokens": prompt_tokens + completion_tokens,
+                        "model": self.model,
+                        "provider": "gemini"
+                    }
             except Exception:
                 pass
 
@@ -112,14 +120,17 @@ class GeminiProvider(LLMProvider):
                     if text.startswith("json"):
                         text = text[4:]
                 text = text.strip()
-                
+
                 result = json.loads(text)
-                return {
+                parsed = {
                     "category": result.get("category", "ADVISORY"),
                     "reasoning": result.get("reasoning", ""),
                     "sql": result.get("sql"),
                     "confidence": result.get("confidence", 0.7)
                 }
+                if token_usage:
+                    parsed["_token_usage"] = token_usage
+                return parsed
             except json.JSONDecodeError:
                 logger.warning(f"Failed to parse Gemini response as JSON: {text[:200]}")
                 return {
@@ -148,3 +159,50 @@ class GeminiProvider(LLMProvider):
                 "sql": None,
                 "confidence": 0.0
             }
+
+    async def complete(self, prompt: str) -> Dict[str, Any]:
+        """Raw JSON completion — returns LLM response without reshaping into category/reasoning/sql."""
+        if not self.client:
+            return {"error": "Gemini client not initialized."}
+
+        try:
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: self.client.models.generate_content(
+                    model=self.model,
+                    contents=prompt,
+                    config={
+                        "response_mime_type": "application/json",
+                        "temperature": 0.1
+                    }
+                )
+            )
+
+            text = response.text
+            if text.startswith("```"):
+                text = text.split("```")[1]
+                if text.startswith("json"):
+                    text = text[4:]
+            text = text.strip()
+
+            result = json.loads(text)
+
+            # Attach token usage
+            try:
+                meta = getattr(response, 'usage_metadata', None)
+                if meta:
+                    result["_token_usage"] = {
+                        "prompt_tokens": getattr(meta, 'prompt_token_count', 0),
+                        "completion_tokens": getattr(meta, 'candidates_token_count', 0),
+                        "total_tokens": getattr(meta, 'prompt_token_count', 0) + getattr(meta, 'candidates_token_count', 0),
+                        "model": self.model,
+                        "provider": "gemini"
+                    }
+            except Exception:
+                pass
+
+            return result
+        except Exception as e:
+            logger.error(f"Gemini completion failed: {e}")
+            return {"error": str(e)}

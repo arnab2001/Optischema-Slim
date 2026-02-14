@@ -8,12 +8,14 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Any
 
 from storage import (
-    get_all_settings, 
-    set_all_settings, 
-    get_saved_optimizations, 
+    get_all_settings,
+    set_all_settings,
+    get_saved_optimizations,
     delete_saved_optimization,
     get_setting,
-    set_setting
+    set_setting,
+    get_token_usage_stats,
+    reset_token_usage
 )
 from models import HealthThresholds
 
@@ -110,3 +112,15 @@ async def update_health_thresholds(config: HealthThresholds):
     """Update health diagnostic thresholds."""
     await set_setting("health_thresholds", config.model_dump())
     return {"success": True}
+
+@router.get("/token-usage")
+async def get_token_usage():
+    """Get cumulative token usage statistics."""
+    stats = await get_token_usage_stats()
+    return {"success": True, "data": stats}
+
+@router.post("/token-usage/reset")
+async def reset_token_usage_stats():
+    """Reset all token usage counters to zero."""
+    await reset_token_usage()
+    return {"success": True, "message": "Token usage counters reset"}

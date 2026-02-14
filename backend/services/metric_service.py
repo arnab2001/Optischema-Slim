@@ -201,19 +201,19 @@ class MetricService:
                             except Exception:
                                 stats_reset = None
                             
-                            # Calculate time window
+                            # Calculate time window (cast to float — EXTRACT returns Decimal in asyncpg)
                             time_window = 1.0  # Default to 1 second to avoid division by zero
                             if stats_reset:
-                                time_window = await conn.fetchval("SELECT EXTRACT(EPOCH FROM (now() - $1))", stats_reset) or 1.0
+                                time_window = float(await conn.fetchval("SELECT EXTRACT(EPOCH FROM (now() - $1))", stats_reset) or 1.0)
                             else:
-                                time_window = await conn.fetchval("""
+                                time_window = float(await conn.fetchval("""
                                     SELECT EXTRACT(EPOCH FROM (now() - pg_postmaster_start_time()))
                                     FROM pg_stat_activity LIMIT 1
-                                """) or 1.0
-                            
+                                """) or 1.0)
+
                             # Calculate QPS from pg_stat_statements
                             if qps_result > 0 and time_window > 0:
-                                qps_value = round(qps_result / max(time_window, 1), 4)  # More precision
+                                qps_value = round(qps_result / max(time_window, 1.0), 4)  # More precision
                             
                             # Fallback to transaction rate if pg_stat_statements has no calls or very low QPS
                             if qps_value == 0:
@@ -226,16 +226,16 @@ class MetricService:
                                 """)
                                 if tx_calls and tx_calls["tx_count"] > 0:
                                     if tx_calls["stats_reset"]:
-                                        tx_window = await conn.fetchval(
+                                        tx_window = float(await conn.fetchval(
                                             "SELECT EXTRACT(EPOCH FROM (now() - $1))",
                                             tx_calls["stats_reset"]
-                                        ) or 1
+                                        ) or 1)
                                     else:
-                                        tx_window = await conn.fetchval("""
+                                        tx_window = float(await conn.fetchval("""
                                             SELECT EXTRACT(EPOCH FROM (now() - pg_postmaster_start_time()))
                                             FROM pg_stat_activity LIMIT 1
-                                        """) or 1
-                                    qps_value = round(tx_calls["tx_count"] / max(tx_window, 1), 2)
+                                        """) or 1)
+                                    qps_value = round(float(tx_calls["tx_count"]) / max(tx_window, 1.0), 2)
                         except Exception as e:
                             # Extension is enabled but querying stats failed - keep status as ok, value stays 0.0
                             logger.warning(f"Could not query pg_stat_statements (extension enabled): {e}")

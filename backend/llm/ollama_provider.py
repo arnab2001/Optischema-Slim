@@ -80,9 +80,10 @@ class OllamaProvider(LLMProvider):
                     data = await response.json()
                     response_text = data.get("response", "{}").strip()
 
-                    # Log token usage
+                    # Capture token usage
                     prompt_tokens = data.get("prompt_eval_count", 0)
                     completion_tokens = data.get("eval_count", 0)
+                    token_usage = None
                     if prompt_tokens or completion_tokens:
                         logger.info(
                             f"[Ollama] Token usage: prompt={prompt_tokens}, "
@@ -90,19 +91,35 @@ class OllamaProvider(LLMProvider):
                             f"total={prompt_tokens + completion_tokens}, "
                             f"model={self.model}"
                         )
+                        token_usage = {
+                            "prompt_tokens": prompt_tokens,
+                            "completion_tokens": completion_tokens,
+                            "total_tokens": prompt_tokens + completion_tokens,
+                            "model": self.model,
+                            "provider": "ollama"
+                        }
 
                     try:
-                        return json.loads(response_text)
+                        result = json.loads(response_text)
+                        if token_usage:
+                            result["_token_usage"] = token_usage
+                        return result
                     except json.JSONDecodeError:
                         # Fallback: try to find the JSON block if it's wrapped in text
                         import re
                         json_match = re.search(r'(\{.*\})', response_text, re.DOTALL)
                         if json_match:
                             try:
-                                return json.loads(json_match.group(1))
+                                result = json.loads(json_match.group(1))
+                                if token_usage:
+                                    result["_token_usage"] = token_usage
+                                return result
                             except:
                                 pass
-                        return {"error": "Failed to parse LLM response as JSON", "raw_response": response_text}
+                        error_result = {"error": "Failed to parse LLM response as JSON", "raw_response": response_text}
+                        if token_usage:
+                            error_result["_token_usage"] = token_usage
+                        return error_result
                         
         except aiohttp.ClientConnectorError:
             return {"error": f"Could not connect to Ollama at {self.base_url}. Is it running?"}

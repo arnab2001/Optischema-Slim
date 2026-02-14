@@ -14,8 +14,10 @@ import {
     Check,
     ArrowUpRight,
     Terminal,
-    Info
+    Info,
+    ShoppingCart
 } from "lucide-react";
+import { useCartStore } from "@/store/cartStore";
 import { toast } from "sonner";
 
 interface Issue {
@@ -30,6 +32,36 @@ interface IssueCardProps {
     issue: Issue;
     extraData?: any;
     onAction: (issue: Issue) => void;
+}
+
+function IssueCartButton({ idxObj }: { idxObj: any }) {
+    const { addItem } = useCartStore();
+    const sql = idxObj.recommendation || `DROP INDEX CONCURRENTLY ${idxObj.schema}.${idxObj.index}`;
+    const inCart = useCartStore((s) => s.isInCart(sql));
+
+    return (
+        <button
+            onClick={() => {
+                if (!inCart) {
+                    addItem({
+                        id: crypto.randomUUID(),
+                        type: "drop",
+                        sql,
+                        description: `Drop unused index ${idxObj.index}`,
+                        table: idxObj.table || "",
+                        estimatedImprovement: undefined,
+                        source: "health",
+                    });
+                }
+            }}
+            className={`p-1 transition-colors ${
+                inCart ? "text-blue-400 cursor-default" : "text-slate-400 hover:text-blue-500"
+            }`}
+            title={inCart ? "Already in cart" : "Add to Cart"}
+        >
+            {inCart ? <Check className="w-3.5 h-3.5" /> : <ShoppingCart className="w-3.5 h-3.5" />}
+        </button>
+    );
 }
 
 export function IssueCard({ issue, extraData, onAction }: IssueCardProps) {
@@ -316,13 +348,16 @@ export function IssueCard({ issue, extraData, onAction }: IssueCardProps) {
                                                     <td className={`px-3 py-2 text-right ${isDark ? "text-slate-300" : "text-slate-700"}`}>{idxObj.size}</td>
                                                     <td className={`px-3 py-2 text-right font-bold ${isDark ? "text-red-500" : "text-red-600"}`}>{idxObj.scans}</td>
                                                     <td className="px-3 py-2 text-center">
-                                                        <button
-                                                            onClick={() => handleCopy(idxObj.recommendation || `DROP INDEX CONCURRENTLY ${idxObj.schema}.${idxObj.index}`, "Drop SQL")}
-                                                            className={`p-1 transition-colors ${isDark ? "text-slate-500 hover:text-red-400" : "text-slate-400 hover:text-red-500"}`}
-                                                            title="Copy DROP SQL"
-                                                        >
-                                                            <Clipboard className="w-3.5 h-3.5" />
-                                                        </button>
+                                                        <div className="flex items-center gap-1 justify-center">
+                                                            <IssueCartButton idxObj={idxObj} />
+                                                            <button
+                                                                onClick={() => handleCopy(idxObj.recommendation || `DROP INDEX CONCURRENTLY ${idxObj.schema}.${idxObj.index}`, "Drop SQL")}
+                                                                className={`p-1 transition-colors ${isDark ? "text-slate-500 hover:text-red-400" : "text-slate-400 hover:text-red-500"}`}
+                                                                title="Copy DROP SQL"
+                                                            >
+                                                                <Clipboard className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             ))}
@@ -387,6 +422,28 @@ export function IssueCard({ issue, extraData, onAction }: IssueCardProps) {
                                     </div>
                                 </div>
                             </div>
+                        )}
+
+                        {/* AI Reasoning (if triage data available) */}
+                        {extraData?.reasoning && (
+                            <details className="group">
+                                <summary className={`text-xs cursor-pointer font-medium ${isDark ? "text-blue-400 hover:text-blue-300" : "text-blue-600 hover:text-blue-500"}`}>
+                                    AI Analysis
+                                </summary>
+                                <div className={`mt-1.5 p-2.5 rounded-lg text-xs leading-relaxed ${isDark ? "bg-slate-800/50 text-slate-400" : "bg-slate-50 text-slate-600"}`}>
+                                    {extraData.reasoning}
+                                    {extraData.confidence_factors && extraData.confidence_factors.length > 0 && (
+                                        <ul className="mt-2 space-y-1">
+                                            {extraData.confidence_factors.map((factor: string, i: number) => (
+                                                <li key={i} className="flex items-start gap-1.5">
+                                                    <span className="text-green-500 mt-0.5 flex-shrink-0">&#x2713;</span>
+                                                    {factor}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
+                            </details>
                         )}
 
                         {/* Fallback for other issues */}

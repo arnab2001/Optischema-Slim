@@ -37,19 +37,19 @@ export function QueryAnalyzer() {
     const [result, setResult] = useState<AnalysisResult | null>(null);
     const [error, setError] = useState<string | null>(null);
 
-    const handleAnalyze = async () => {
+    const handleAnalyze = async (refresh = false) => {
         if (!query.trim()) return;
 
         setAnalyzing(true);
         setError(null);
-        setResult(null);
+        if (refresh) setResult(null);
 
         try {
             const apiUrl = import.meta.env.VITE_API_URL || "";
             const res = await fetch(`${apiUrl}/api/analysis/analyze`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ query }),
+                body: JSON.stringify({ query, refresh }),
             });
 
             const data = await res.json();
@@ -116,7 +116,7 @@ export function QueryAnalyzer() {
                 </div>
 
                 <button
-                    onClick={handleAnalyze}
+                    onClick={() => handleAnalyze()}
                     disabled={!isConnected || analyzing || !query.trim()}
                     className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >

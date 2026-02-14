@@ -1,33 +1,79 @@
 "use client";
 
 import { useAppStore } from "@/store/appStore";
-import { ChevronRight, ChevronDown, Database, Activity, GitCommit, Layers } from "lucide-react";
+import { ChevronRight, ChevronDown, Database, Activity, GitCommit, Layers, AlertTriangle } from "lucide-react";
 import { useState } from "react";
 
 interface PlanNodeProps {
     node: any;
     depth?: number;
-    totalCost?: number; // Pass root total cost to calculate relative cost
+    totalCost?: number;
 }
+
+// ── Bottleneck Detection ─────────────────────────────────────────────────────
+
+interface Badge {
+    label: string;
+    color: string; // tailwind bg class
+    textColor: string;
+}
+
+function detectBadges(node: any, rows: number): Badge[] {
+    const badges: Badge[] = [];
+    const type: string = node["Node Type"] || "";
+
+    // Seq Scan on a table with many rows → missing index
+    if (type === "Seq Scan" && rows > 500) {
+        badges.push({ label: "Missing Index", color: "bg-red-500/20", textColor: "text-red-400" });
+    }
+
+    // Nested Loop with high row count → consider hash join
+    if (type === "Nested Loop" && rows > 5000) {
+        badges.push({ label: "Consider Hash Join", color: "bg-yellow-500/20", textColor: "text-yellow-400" });
+    }
+
+    // Sort node without an index → missing sort index
+    if (type === "Sort" && !node["Index Name"]) {
+        badges.push({ label: "Missing Sort Index", color: "bg-orange-500/20", textColor: "text-orange-400" });
+    }
+
+    // High rows removed by filter → poor selectivity
+    const rowsRemoved = node["Rows Removed by Filter"] || 0;
+    if (rowsRemoved > 0 && rows > 0 && rowsRemoved > rows * 5) {
+        badges.push({ label: "Poor Selectivity", color: "bg-purple-500/20", textColor: "text-purple-400" });
+    }
+
+    return badges;
+}
+
+// ── Heat Map Color Logic ─────────────────────────────────────────────────────
+
+function getHeatColor(costPercent: number): { bar: string; text: string; pulse: boolean } {
+    if (costPercent >= 60) return { bar: "bg-red-500", text: "text-red-500", pulse: true };
+    if (costPercent >= 30) return { bar: "bg-orange-500", text: "text-orange-400", pulse: false };
+    if (costPercent >= 10) return { bar: "bg-yellow-500", text: "text-yellow-400", pulse: false };
+    return { bar: "bg-green-500", text: "text-green-400", pulse: false };
+}
+
+// ── Main Component ───────────────────────────────────────────────────────────
 
 export function PlanNode({ node, depth = 0, totalCost }: PlanNodeProps) {
     const { theme } = useAppStore();
     const isDark = theme === "dark";
     const [expanded, setExpanded] = useState(true);
+    const [showTooltip, setShowTooltip] = useState(false);
 
     const hasChildren = node.Plans && node.Plans.length > 0;
     const cost = node["Total Cost"];
     const rows = node["Plan Rows"];
+    const actualRows = node["Actual Rows"];
     const type = node["Node Type"];
 
-    // Calculate percentage if totalCost is provided, else assume this is root or relative to something
-    // If depth is 0, this IS the root, so totalCost is this node's cost
     const effectiveTotalCost = depth === 0 ? cost : totalCost || cost;
     const costPercent = effectiveTotalCost > 0 ? (cost / effectiveTotalCost) * 100 : 0;
 
-    // Determine color based on cost
-    const isExpensive = cost > 1000;
-    const isHighCostNode = costPercent > 30; // 30% of query cost
+    const heat = getHeatColor(costPercent);
+    const badges = detectBadges(node, rows);
 
     const getNodeIcon = (type: string) => {
         if (type.includes("Scan") || type.includes("Index")) return Database;
@@ -54,6 +100,14 @@ export function PlanNode({ node, depth = 0, totalCost }: PlanNodeProps) {
     const accentColor = getNodeColorClass(type);
     const textColor = getNodeTextColorClass(type);
 
+    // ── Tooltip data ─────────────────────────────────────────────────────────
+    const sharedHit = node["Shared Hit Blocks"];
+    const sharedRead = node["Shared Read Blocks"];
+    const localHit = node["Local Hit Blocks"];
+    const filterCond = node["Filter"];
+    const rowsRemovedByFilter = node["Rows Removed by Filter"];
+    const startupCost = node["Startup Cost"];
+
     return (
         <div className="font-mono text-[11px]">
             <div
@@ -63,6 +117,8 @@ export function PlanNode({ node, depth = 0, totalCost }: PlanNodeProps) {
                     e.stopPropagation();
                     setExpanded(!expanded);
                 }}
+                onMouseEnter={() => setShowTooltip(true)}
+                onMouseLeave={() => setShowTooltip(false)}
             >
                 {/* Visual Cue - Vertical Bar */}
                 <div className={`absolute left-0 top-0 bottom-0 w-0.5 opacity-40 group-hover:opacity-100 transition-opacity ${accentColor}`} />
@@ -84,17 +140,27 @@ export function PlanNode({ node, depth = 0, totalCost }: PlanNodeProps) {
                                     on {node["Relation Name"]}
                                 </span>
                             )}
+                            {/* Bottleneck Badges */}
+                            {badges.map((badge, i) => (
+                                <span
+                                    key={i}
+                                    className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${badge.color} ${badge.textColor} flex items-center gap-0.5`}
+                                >
+                                    <AlertTriangle className="w-2.5 h-2.5" />
+                                    {badge.label}
+                                </span>
+                            ))}
                         </div>
 
-                        {/* Cost & Rows */}
+                        {/* Cost & Rows - Heat Map */}
                         <div className="flex items-center gap-6 flex-shrink-0">
                             <div className="flex flex-col items-end">
-                                <span className={`font-bold ${isHighCostNode ? "text-red-500" : "text-slate-300"}`}>
+                                <span className={`font-bold ${heat.text}`}>
                                     {costPercent.toFixed(1)}%
                                 </span>
                                 <div className="w-20 h-1 bg-slate-800 rounded-full mt-1 overflow-hidden">
                                     <div
-                                        className={`h-full ${isHighCostNode ? "bg-red-500 animate-pulse" : accentColor}`}
+                                        className={`h-full ${heat.bar} ${heat.pulse ? "animate-pulse" : ""}`}
                                         style={{ width: `${Math.min(costPercent, 100)}%` }}
                                     />
                                 </div>
@@ -105,7 +171,7 @@ export function PlanNode({ node, depth = 0, totalCost }: PlanNodeProps) {
                         </div>
                     </div>
 
-                    {/* Filter condition often contains useful info */}
+                    {/* Filter condition */}
                     {node["Filter"] && (
                         <div className={`mt-1 py-0.5 px-1.5 rounded bg-black/40 text-[10px] text-slate-500 border border-slate-800/50 inline-block`}>
                             <span className="text-red-400/70 font-bold mr-1">FILTER:</span>
@@ -119,6 +185,70 @@ export function PlanNode({ node, depth = 0, totalCost }: PlanNodeProps) {
                         </div>
                     )}
                 </div>
+
+                {/* Tooltip on hover */}
+                {showTooltip && (
+                    <div
+                        className="absolute left-full top-0 ml-2 z-50 w-64 p-3 rounded-lg border bg-slate-900 border-slate-700 shadow-xl text-[10px] space-y-1.5"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="font-bold text-slate-300 text-[11px] mb-2">{type}</div>
+
+                        <div className="flex justify-between">
+                            <span className="text-slate-500">Cost</span>
+                            <span className="text-slate-300">{startupCost?.toFixed(1)}..{cost?.toFixed(1)}</span>
+                        </div>
+
+                        <div className="flex justify-between">
+                            <span className="text-slate-500">Est. Rows</span>
+                            <span className="text-slate-300">{rows?.toLocaleString()}</span>
+                        </div>
+
+                        {actualRows != null && (
+                            <div className="flex justify-between">
+                                <span className="text-slate-500">Actual Rows</span>
+                                <span className={actualRows > rows * 5 ? "text-red-400 font-bold" : "text-slate-300"}>
+                                    {actualRows.toLocaleString()}
+                                    {rows > 0 && actualRows !== rows && (
+                                        <span className="text-slate-500 ml-1">
+                                            ({((actualRows / rows) * 100).toFixed(0)}%)
+                                        </span>
+                                    )}
+                                </span>
+                            </div>
+                        )}
+
+                        {rowsRemovedByFilter != null && rowsRemovedByFilter > 0 && (
+                            <div className="flex justify-between">
+                                <span className="text-slate-500">Rows Removed</span>
+                                <span className="text-orange-400">{rowsRemovedByFilter.toLocaleString()}</span>
+                            </div>
+                        )}
+
+                        {(sharedHit != null || sharedRead != null) && (
+                            <div className="flex justify-between">
+                                <span className="text-slate-500">Buffers</span>
+                                <span className="text-slate-300">
+                                    {sharedHit || 0} hit / {sharedRead || 0} read
+                                </span>
+                            </div>
+                        )}
+
+                        {localHit != null && (
+                            <div className="flex justify-between">
+                                <span className="text-slate-500">Local Buffers</span>
+                                <span className="text-slate-300">{localHit} hit</span>
+                            </div>
+                        )}
+
+                        {filterCond && (
+                            <div className="pt-1.5 mt-1.5 border-t border-slate-700">
+                                <span className="text-slate-500 block mb-0.5">Filter</span>
+                                <code className="text-slate-400 break-all">{filterCond}</code>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
 
             {hasChildren && expanded && (

@@ -5,6 +5,7 @@ import { Sidebar } from "./sidebar";
 import { TopBar } from "./top-bar";
 import { useAppStore } from "@/store/appStore";
 import { Toaster } from "sonner";
+import { OptimizationCart } from "@/components/optimization-cart";
 
 interface AppShellProps {
     children: ReactNode;
@@ -33,6 +34,9 @@ export function AppShell({ children }: AppShellProps) {
                     </main>
                 </div>
             </div>
+
+            {/* Floating Optimization Cart */}
+            <OptimizationCart />
         </div>
     );
 }

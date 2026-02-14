@@ -78,7 +78,8 @@ class DeepSeekProvider(LLMProvider):
             
             content = response.choices[0].message.content
 
-            # Log token usage
+            # Capture token usage
+            token_usage = None
             if hasattr(response, 'usage') and response.usage:
                 u = response.usage
                 logger.info(
@@ -86,15 +87,25 @@ class DeepSeekProvider(LLMProvider):
                     f"completion={u.completion_tokens}, total={u.total_tokens}, "
                     f"model={self.model}"
                 )
+                token_usage = {
+                    "prompt_tokens": u.prompt_tokens,
+                    "completion_tokens": u.completion_tokens,
+                    "total_tokens": u.total_tokens,
+                    "model": self.model,
+                    "provider": "deepseek"
+                }
 
             try:
                 result = json.loads(content)
-                return {
+                parsed = {
                     "category": result.get("category", "ADVISORY"),
                     "reasoning": result.get("reasoning", ""),
                     "sql": result.get("sql"),
                     "confidence": result.get("confidence", 0.7)
                 }
+                if token_usage:
+                    parsed["_token_usage"] = token_usage
+                return parsed
             except json.JSONDecodeError:
                 logger.warning(f"Failed to parse DeepSeek response as JSON: {content[:200]}")
                 return {
@@ -113,3 +124,41 @@ class DeepSeekProvider(LLMProvider):
                 "sql": None,
                 "confidence": 0.0
             }
+
+    async def complete(self, prompt: str) -> Dict[str, Any]:
+        """Raw JSON completion — returns LLM response without reshaping into category/reasoning/sql."""
+        if not self.client:
+            return {"error": "DeepSeek client not initialized."}
+
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"}
+            )
+
+            content = response.choices[0].message.content
+            result = json.loads(content)
+
+            if hasattr(response, 'usage') and response.usage:
+                u = response.usage
+                logger.info(
+                    f"[DeepSeek] Token usage: prompt={u.prompt_tokens}, "
+                    f"completion={u.completion_tokens}, total={u.total_tokens}, "
+                    f"model={self.model}"
+                )
+                result["_token_usage"] = {
+                    "prompt_tokens": u.prompt_tokens,
+                    "completion_tokens": u.completion_tokens,
+                    "total_tokens": u.total_tokens,
+                    "model": self.model,
+                    "provider": "deepseek"
+                }
+
+            return result
+        except json.JSONDecodeError:
+            logger.warning(f"Failed to parse DeepSeek response as JSON")
+            return {"error": "Failed to parse response as JSON"}
+        except Exception as e:
+            logger.error(f"DeepSeek completion failed: {e}")
+            return {"error": str(e)}

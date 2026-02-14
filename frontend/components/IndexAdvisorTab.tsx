@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { DatabaseIcon, RefreshCwIcon, AlertTriangleIcon, TrashIcon, PlayIcon } from 'lucide-react';
+import { DatabaseIcon, RefreshCwIcon, AlertTriangleIcon, TrashIcon, PlayIcon, ShoppingCart, Check } from 'lucide-react';
+import { useCartStore } from '@/store/cartStore';
 
 interface IndexRecommendation {
   id: string;
@@ -28,6 +29,37 @@ interface IndexSummary {
   recommendations_by_risk: Record<string, number>;
   total_potential_savings_mb: number;
   recent_recommendations_24h: number;
+}
+
+function IndexAdvisorCartButton({ rec }: { rec: IndexRecommendation }) {
+  const { addItem } = useCartStore();
+  const inCart = useCartStore((s) => s.isInCart(rec.sql_fix));
+
+  return (
+    <button
+      onClick={() => {
+        if (!inCart) {
+          addItem({
+            id: rec.id,
+            type: rec.recommendation_type === 'drop' ? 'drop' : 'index',
+            sql: rec.sql_fix,
+            description: `${rec.recommendation_type === 'drop' ? 'Drop' : 'Optimize'} ${rec.index_name} on ${rec.table_name}`,
+            table: rec.table_name,
+            estimatedImprovement: rec.estimated_savings_mb,
+            source: 'index-advisor',
+          });
+        }
+      }}
+      className={`px-2 py-1 text-xs rounded flex items-center gap-1 ${
+        inCart
+          ? 'bg-blue-100 text-blue-700 cursor-default'
+          : 'bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200'
+      }`}
+    >
+      {inCart ? <Check className="h-3 w-3" /> : <ShoppingCart className="h-3 w-3" />}
+      {inCart ? 'In Cart' : 'Add to Cart'}
+    </button>
+  );
 }
 
 export default function IndexAdvisorTab() {
@@ -514,7 +546,8 @@ export default function IndexAdvisorTab() {
                         </span>
                       </td>
                       <td className="py-3 px-4">
-                        <div className="flex gap-2">
+                        <IndexAdvisorCartButton rec={rec} />
+                        <div className="flex gap-2 mt-1">
                           <button
                             onClick={() => applyRecommendation(rec.id)}
                             className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded hover:bg-green-200 flex items-center gap-1"

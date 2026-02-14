@@ -85,11 +85,12 @@ function OllamaModelSelect({ baseUrl, value, onChange }: OllamaModelSelectProps)
 }
 
 import { ThresholdSettings } from "@/components/health/threshold-settings";
+import { TokenUsage } from "@/components/token-usage";
 
 export default function SettingsPage() {
     const { theme, toggleTheme } = useAppStore();
     const isDark = theme === "dark";
-    const [activeTab, setActiveTab] = useState<"general" | "thresholds">("general");
+    const [activeTab, setActiveTab] = useState<"general" | "thresholds" | "usage">("general");
 
     const [settings, setSettings] = useState<SettingsData>({
         llm_provider: "ollama",
@@ -229,7 +230,7 @@ export default function SettingsPage() {
                             : "text-slate-500 hover:text-slate-400"
                             }`}
                     >
-                        General Configurations
+                        General
                     </button>
                     <button
                         onClick={() => setActiveTab("thresholds")}
@@ -238,7 +239,16 @@ export default function SettingsPage() {
                             : "text-slate-500 hover:text-slate-400"
                             }`}
                     >
-                        Health Thresholds
+                        Thresholds
+                    </button>
+                    <button
+                        onClick={() => setActiveTab("usage")}
+                        className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${activeTab === "usage"
+                            ? isDark ? "bg-slate-700 text-white shadow-sm" : "bg-white text-slate-800 shadow-sm"
+                            : "text-slate-500 hover:text-slate-400"
+                            }`}
+                    >
+                        Usage & Cost
                     </button>
                 </div>
 
@@ -418,9 +428,13 @@ export default function SettingsPage() {
                             )}
                         </button>
                     </div>
-                ) : (
+                ) : activeTab === "thresholds" ? (
                     <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <ThresholdSettings />
+                    </div>
+                ) : (
+                    <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <TokenUsage />
                     </div>
                 )}
             </div>

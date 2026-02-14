@@ -124,13 +124,38 @@ class AnalysisOrchestrator:
             # Tier 1: Verifiable (HypoPG)
             simulation = await simulation_service.simulate_index(query, suggested_sql)
             result["simulation"] = simulation
-            
+
             # Check if simulation fell back to advisory
             if simulation.get("verification_status") == "advisory":
                 result["verification_status"] = "advisory"
                 result["message"] = simulation.get("message")
             else:
                 result["verification_status"] = "verified" if "improvement_percent" in simulation else "failed"
+
+            # WORKLOAD IMPACT TEST: Test this index against other queries
+            # Only if simulation succeeded and we have tables
+            if result["verification_status"] == "verified" and tables:
+                try:
+                    # Extract table name from the first table (or from index SQL)
+                    # Prefer getting it from the index SQL to be more accurate
+                    import re
+                    match = re.search(r'ON\s+([^\s(]+)', suggested_sql, re.IGNORECASE)
+                    target_table = match.group(1).strip() if match else (tables[0] if tables else None)
+
+                    if target_table:
+                        # Remove schema prefix if present for matching
+                        table_only = target_table.split('.')[-1]
+                        workload_impact = await simulation_service.test_workload_impact(
+                            index_sql=suggested_sql,
+                            table_name=table_only,
+                            limit=20
+                        )
+
+                        if "error" not in workload_impact:
+                            result["workload_impact"] = workload_impact
+                except Exception as e:
+                    logger.warning(f"Workload impact test failed: {e}")
+                    # Don't fail the entire analysis if workload test fails
             
         elif category == "REWRITE" and suggested_sql:
             # Tier 2: Estimatable (Safe Rewrite)
@@ -141,8 +166,124 @@ class AnalysisOrchestrator:
         else:
             # Tier 3: Advisory
             result["verification_status"] = "advisory"
-            
+
+        # 4. BUILD CONFIDENCE FACTORS
+        result["confidence_factors"] = self._build_confidence_factors(result, schema_context)
+        result["confidence_score"] = self._compute_confidence_score(result)
+
         return result
+
+    def _build_confidence_factors(self, result: Dict[str, Any], schema_context: str) -> list:
+        """
+        Derive confidence factors from analysis result and context.
+        These explain *why* we trust or distrust the recommendation.
+        """
+        factors = []
+        verification = result.get("verification_status", "")
+        simulation = result.get("simulation", {})
+        estimation = result.get("estimation", {})
+
+        # Factor: verification method
+        if verification == "verified":
+            improvement = simulation.get("improvement_percent", 0)
+            factors.append(f"HypoPG verified {improvement}% cost reduction")
+        elif verification == "estimated":
+            new_cost = estimation.get("new_cost")
+            original = result.get("original_cost")
+            if new_cost and original and original > 0:
+                reduction = ((original - new_cost) / original) * 100
+                factors.append(f"EXPLAIN estimation shows {reduction:.0f}% cost reduction")
+            else:
+                factors.append("EXPLAIN-based estimation (no HypoPG)")
+        elif verification == "advisory":
+            factors.append("Advisory only - no automated verification available")
+
+        # Factor: table size (parse from schema context)
+        try:
+            import re
+            row_counts = re.findall(r'Rows:\s*([\d,]+)', schema_context)
+            for rc in row_counts:
+                count = int(rc.replace(',', ''))
+                if count > 1_000_000:
+                    factors.append(f"Table has {count:,} rows (high impact)")
+                    break
+                elif count > 100_000:
+                    factors.append(f"Table has {count:,} rows (moderate impact)")
+                    break
+        except Exception:
+            pass
+
+        # Factor: column warnings
+        col_warnings = result.get("suggestion", {}).get("_column_warnings", [])
+        if col_warnings:
+            factors.append(f"Column validation: {len(col_warnings)} warning(s)")
+        else:
+            if result.get("suggestion", {}).get("sql"):
+                factors.append("All referenced columns validated against schema")
+
+        # Factor: category alignment
+        category = result.get("analysis_type", "")
+        if category == "INDEX" and simulation.get("improvement_percent", 0) > 30:
+            factors.append("High-impact index suggestion (>30% improvement)")
+
+        # Factor: workload impact
+        workload = result.get("workload_impact", {})
+        if workload and "tested_queries" in workload:
+            improved = workload.get("improved", 0)
+            regressed = workload.get("regressed", 0)
+            tested = workload.get("tested_queries", 0)
+
+            if regressed == 0 and improved > 0:
+                factors.append(f"Workload test: {improved}/{tested} queries improved, none regressed")
+            elif regressed > 0:
+                factors.append(f"⚠️  Workload test: {regressed}/{tested} queries regressed")
+            elif improved == 0 and tested > 0:
+                factors.append(f"Workload test: No queries benefited from this index")
+
+        return factors
+
+    def _compute_confidence_score(self, result: Dict[str, Any]) -> int:
+        """
+        Compute a 0-100 confidence score based on verification status and results.
+        Includes workload impact if available.
+        """
+        verification = result.get("verification_status", "")
+        simulation = result.get("simulation", {})
+        workload = result.get("workload_impact", {})
+
+        base_score = 0
+        if verification == "verified":
+            improvement = simulation.get("improvement_percent", 0)
+            # Verified + high improvement = high confidence
+            if improvement > 30:
+                base_score = 90
+            elif improvement > 10:
+                base_score = 80
+            else:
+                base_score = 70
+        elif verification == "estimated":
+            base_score = 60
+        elif verification == "advisory":
+            base_score = 40
+        else:
+            base_score = 30
+
+        # Adjust based on workload impact
+        if workload and "tested_queries" in workload:
+            improved = workload.get("improved", 0)
+            regressed = workload.get("regressed", 0)
+            tested = workload.get("tested_queries", 0)
+
+            if tested > 0:
+                # Boost if many queries improved and none regressed
+                if regressed == 0 and improved >= tested * 0.5:
+                    base_score = min(100, base_score + 5)
+                # Penalize if queries regressed
+                elif regressed > 0:
+                    penalty = min(20, regressed * 5)  # Max -20 points
+                    base_score = max(0, base_score - penalty)
+
+        return base_score
 
 
 analysis_orchestrator = AnalysisOrchestrator()

@@ -278,4 +278,146 @@ class SimulationService:
                 except Exception:
                     pass
 
+    async def test_workload_impact(self, index_sql: str, table_name: str, limit: int = 20) -> Dict[str, Any]:
+        """
+        Test a suggested index against top queries from pg_stat_statements.
+        Returns aggregate impact: how many queries improved, regressed, or stayed neutral.
+
+        Args:
+            index_sql: The CREATE INDEX statement to test
+            table_name: The table being indexed (used to filter relevant queries)
+            limit: Max number of top queries to test (default 20)
+
+        Returns:
+            Dict with improved/regressed/neutral counts and detailed results per query
+        """
+        pool = await connection_manager.get_pool()
+        if not pool:
+            return {"error": "No database connection"}
+
+        if not await self.check_hypopg_installed():
+            return {"error": "HypoPG extension not available"}
+
+        try:
+            async with pool.acquire() as conn:
+                # Get PG version to use correct column names
+                pg_version = connection_manager.get_pg_version()
+                use_new = pg_version is not None and pg_version >= 130000
+                total_col = "total_exec_time" if use_new else "total_time"
+                mean_col = "mean_exec_time" if use_new else "mean_time"
+
+                # Get top queries that reference this table
+                queries = await conn.fetch(f"""
+                    SELECT
+                        queryid::text,
+                        query,
+                        calls,
+                        {mean_col}::float as mean_exec_time,
+                        {total_col}::float as total_exec_time
+                    FROM pg_stat_statements
+                    WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
+                      AND query ILIKE '%' || $1 || '%'
+                      AND query NOT ILIKE '%%pg_catalog%%'
+                      AND query NOT ILIKE '%%EXPLAIN%%'
+                      AND query NOT ILIKE '%%COMMIT%%'
+                      AND query NOT ILIKE '%%BEGIN%%'
+                      AND calls > 10
+                    ORDER BY calls * {mean_col} DESC
+                    LIMIT $2
+                """, table_name, limit)
+
+                if not queries:
+                    return {
+                        "tested_queries": 0,
+                        "message": f"No queries found in pg_stat_statements that reference {table_name}"
+                    }
+
+                # Test impact across queries
+                impact_results = {
+                    "improved": 0,
+                    "regressed": 0,
+                    "neutral": 0,
+                    "tested_queries": len(queries),
+                    "details": []
+                }
+
+                try:
+                    async with conn.transaction():
+                        # Create the hypothetical index
+                        indexes = self._parse_indexes(index_sql)
+                        for idx in indexes:
+                            try:
+                                await conn.execute("SELECT hypopg_create_index($1)", idx)
+                            except Exception as e:
+                                logger.warning(f"Failed to create virtual index for workload test: {e}")
+                                return {"error": f"Failed to create hypothetical index: {str(e)}"}
+
+                        # Test each query
+                        for q in queries:
+                            try:
+                                # Find working candidate for this query
+                                explain_query = await self.find_working_candidate(conn, q["query"])
+
+                                # Get cost without index
+                                await conn.execute("SELECT hypopg_reset()")
+                                plan_before_json = await conn.fetchval(f"EXPLAIN (FORMAT JSON) {explain_query}")
+                                plan_before = json.loads(plan_before_json)[0]['Plan']
+                                cost_before = plan_before['Total Cost']
+
+                                # Recreate index and get cost with index
+                                for idx in indexes:
+                                    await conn.execute("SELECT hypopg_create_index($1)", idx)
+
+                                plan_after_json = await conn.fetchval(f"EXPLAIN (FORMAT JSON) {explain_query}")
+                                plan_after = json.loads(plan_after_json)[0]['Plan']
+                                cost_after = plan_after['Total Cost']
+
+                                # Calculate change
+                                pct_change = 0
+                                if cost_before > 0:
+                                    pct_change = ((cost_before - cost_after) / cost_before) * 100
+
+                                # Classify result (>10% = significant)
+                                if pct_change > 10:
+                                    impact_results["improved"] += 1
+                                    status = "improved"
+                                elif pct_change < -10:
+                                    impact_results["regressed"] += 1
+                                    status = "regressed"
+                                else:
+                                    impact_results["neutral"] += 1
+                                    status = "neutral"
+
+                                impact_results["details"].append({
+                                    "queryid": q["queryid"],
+                                    "query": q["query"][:200],  # Truncate for readability
+                                    "calls": q["calls"],
+                                    "mean_exec_time": round(q["mean_exec_time"], 2),
+                                    "cost_before": round(cost_before, 2),
+                                    "cost_after": round(cost_after, 2),
+                                    "improvement_percent": round(pct_change, 2),
+                                    "status": status
+                                })
+
+                            except Exception as e:
+                                logger.warning(f"Failed to test query {q.get('queryid')}: {e}")
+                                # Don't fail entire analysis if one query fails
+                                continue
+
+                except Exception as e:
+                    logger.error(f"Workload impact test failed: {e}")
+                    return {"error": f"Workload test failed: {str(e)}"}
+                finally:
+                    try:
+                        await conn.execute("SELECT hypopg_reset()")
+                    except:
+                        pass
+
+                return impact_results
+
+        except Exception as e:
+            logger.error(f"Workload impact test failed: {e}")
+            return {"error": str(e)}
+
+
 simulation_service = SimulationService()
